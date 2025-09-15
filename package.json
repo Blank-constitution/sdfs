@@ -1,0 +1,73 @@
+{
+  "name": "sdfs",
+  "version": "0.1.0",
+  "private": true,
+  "main": "public/main.js",
+  "homepage": "./",
+  "engines": {
+    "node": "20.x"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.1.3",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "axios": "^1.6.0",
+    "chart.js": "^4.4.0",
+    "crypto-js": "^4.2.0",
+    "electron-is-dev": "^2.0.0",
+    "qs": "^6.11.2",
+    "react": "^18.2.0",
+    "react-chartjs-2": "^5.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^2.1.4"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "electron:start": "electron .",
+    "electron:dev": "concurrently \"cross-env BROWSER=none npm start\" \"wait-on http://localhost:3000 && electron .\"",
+    "electron:pack": "electron-builder --dir",
+    "electron:dist": "npm run build && electron-builder",
+    "audit:fix": "npm audit fix --force"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "electron": "^27.0.2",
+    "electron-builder": "^24.6.4",
+    "wait-on": "^7.1.0"
+  },
+  "build": {
+    "appId": "com.my-trading-bot.app",
+    "productName": "My Trading Bot",
+    "files": [
+      "build/**/*",
+      "node_modules/**/*"
+    ],
+    "directories": {
+      "buildResources": "assets"
+    }
+  }
+}
