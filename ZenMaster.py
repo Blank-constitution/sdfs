@@ -5,16 +5,27 @@ from DataBridge import MarketDataBridge
 from OrderBookManager import OrderBookManager
 from TapeFilter import TapeFilter
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger("ZenMaster")
 
 class BotState(Enum):
+    """
+    The different states of consciousness for the Digital Monk.
+    """
     WATCHING_IN_NIRVANA = "watching_in_nirvana"
     WAITING_FOR_ENTRY = "waiting_for_entry"
     IN_TRADE = "in_trade"
     EXITING_TRADE = "exiting_trade"
 
 class ZenMaster:
+    """
+    The ZenMaster embodies the Digital Monk's philosophy of extreme patience and precision.
+    It only trades when multiple conditions align perfectly.
+    """
     def __init__(self, data_bridge: MarketDataBridge, symbol: str, initial_capital: float = 1000.0):
         self.data_bridge = data_bridge
         self.symbol = symbol
@@ -32,6 +43,9 @@ class ZenMaster:
         logger.info("Entering state of peaceful observation. Watching for The Nail...")
 
     def meditate(self):
+        """
+        The main method called on each market update.
+        """
         current_price = self.data_bridge.current_price
         if current_price == 0:
             return
@@ -52,6 +66,9 @@ class ZenMaster:
             self.exit_trade(current_price)
 
     def look_for_the_nail(self) -> bool:
+        """
+        Looks for the rare, perfect alignment of conditions - "The Nail".
+        """
         strong_support = self.book.finds_strong_support()
         ignition_spike = self.tape.detects_ignition_spike()
         buyer_dominance = self.tape.detects_buyer_dominance()
@@ -65,6 +82,9 @@ class ZenMaster:
         return all_conditions_met
 
     def should_enter_now(self, current_price: float) -> bool:
+        """
+        Determines the precise moment for entry after "The Nail" is found.
+        """
         imbalance = self.book.calculates_bid_ask_imbalance()
         accelerating_volume = self.tape.is_accelerating_volume()
         large_trade_sequence = self.tape.detects_large_trade_sequence()
@@ -77,6 +97,12 @@ class ZenMaster:
         return is_entry_time
 
     def enter_trade(self, entry_price: float):
+        """
+        Executes the trade entry.
+        """
+        if self.state == BotState.IN_TRADE:
+            logger.warning("Cannot enter trade, already in a position.")
+            return
         risk_amount = self.capital * 0.02
         self.position_size = risk_amount / entry_price
         self.entry_price = entry_price
@@ -85,20 +111,34 @@ class ZenMaster:
         logger.info(f"ENTERING TRADE at {entry_price:.2f}, Size: {self.position_size:.6f}, Risk: ${risk_amount:.2f}")
 
     def should_exit_trade(self, current_price: float) -> bool:
+        """
+        Determines if the current trade should be exited.
+        """
         pnl_percentage = ((current_price - self.entry_price) / self.entry_price) * 100
-        if pnl_percentage >= 6.0:
+        
+        if pnl_percentage >= 6.0: # 3:1 reward-to-risk
             logger.info(f"Target reached! PnL: {pnl_percentage:.2f}%")
             return True
-        if pnl_percentage <= -2.0:
+            
+        if pnl_percentage <= -2.0: # Stop loss
             logger.info(f"Stop loss hit. PnL: {pnl_percentage:.2f}%")
             return True
+            
         bid_ask_imbalance = self.book.calculates_bid_ask_imbalance()
         if bid_ask_imbalance < -0.5:
             logger.info(f"Exiting due to developing selling pressure. Imbalance: {bid_ask_imbalance:.2f}")
             return True
+            
         return False
-
+    
     def exit_trade(self, exit_price: float):
+        """
+        Executes the trade exit and updates performance.
+        """
+        if self.state != BotState.IN_TRADE and self.state != BotState.EXITING_TRADE:
+            logger.warning("Cannot exit trade, not in a position.")
+            self.state = BotState.WATCHING_IN_NIRVANA
+            return
         pnl_percentage = ((exit_price - self.entry_price) / self.entry_price) * 100
         pnl_amount = self.position_size * (exit_price - self.entry_price)
         
@@ -119,56 +159,16 @@ class ZenMaster:
         self.entry_time = 0
         self.state = BotState.WATCHING_IN_NIRVANA
         logger.info("Returning to state of watchful meditation...")
-            ignition_spike, 
-            buyer_dominance, 
-            liquidity_vacuum
-        ])
+        logger.info(f"EXITED TRADE at {exit_price:.2f}, PnL: {pnl_percentage:.2f}% (${pnl_amount:.2f}), New Capital: ${self.capital:.2f}")
         
-        if all_conditions_met:
-            logger.info("✓ Strong support detected in order book")
-            logger.info("✓ Ignition spike detected in tape")
-            logger.info("✓ Buyer dominance confirmed")
-            logger.info("✓ Ask liquidity vacuum present")
+        win_rate = (self.profitable_trades / self.trades_executed) * 100 if self.trades_executed > 0 else 0
+        logger.info(f"Win rate: {win_rate:.1f}% ({self.profitable_trades}/{self.trades_executed})")
         
-        return all_conditions_met
-    
-    def should_enter_now(self, current_price: float) -> bool:
-        """
-        Once "The Nail" is found, this method determines the
-        precise moment for entry based on additional confirmation signals.
-        
-        Args:
-            current_price: Current market price
-            
-        Returns:
-            True if this is the optimal entry moment
-        """
-        # Check bid-ask imbalance for strong buying pressure
-        imbalance = self.book.calculates_bid_ask_imbalance()
-        
-        # Check if volume is accelerating
-        accelerating_volume = self.tape.is_accelerating_volume()
-        
-        # Check for sequence of large trades in same direction
-        large_trade_sequence = self.tape.detects_large_trade_sequence()
-        
-        # We want strong buying pressure and accelerating volume
-        is_entry_time = (imbalance > 0.7 and 
-                         accelerating_volume and 
-                         large_trade_sequence)
-        
-        if is_entry_time:
-            logger.info(f"Entry conditions confirmed:")
-            logger.info(f"  - Bid/Ask imbalance: {imbalance:.2f}")
-            logger.info(f"  - Accelerating volume: {accelerating_volume}")
-            logger.info(f"  - Large trade sequence: {large_trade_sequence}")
-        
-        return is_entry_time
-    
-    def enter_trade(self, entry_price: float):
-        """
-        Execute the trade entry with disciplined position sizing.
-        
+        self.entry_price = 0.0
+        self.position_size = 0.0
+        self.entry_time = 0
+        self.state = BotState.WATCHING_IN_NIRVANA
+        logger.info("Returning to state of watchful meditation...")
         Args:
             entry_price: Price at which to enter the trade
         """

@@ -2,9 +2,12 @@
   "rewrites": [
     {
       "source": "/api/:path*",
+      // IMPORTANT: Replace this with your actual backend server URL in production
       "destination": "https://your-backend-api-url.com/api/:path*"
     },
     {
+      // This rule is for Single Page Application (SPA) routing.
+      // It serves the index.html for any path that is not an API call.
       "source": "/:path((?!api/).*)",
       "destination": "/index.html"
     }
@@ -19,4 +22,5 @@
       ]
     }
   ]
+}
 }

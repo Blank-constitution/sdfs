@@ -19,6 +19,9 @@ function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, kra
   const [totalProfit, setTotalProfit] = useState(0);
   const [selectedPairs, setSelectedPairs] = useState([]);
   const [availablePairs, setAvailablePairs] = useState([]);
+  const [statPairs, setStatPairs] = useState([
+    { pair1: 'BTCUSDT', pair2: 'ETHUSDT', correlation: 0, spread: 0, zScore: 0, isViable: false }
+  ]);
   const { addNotification } = useNotification();
 
   // Function to scan for cross-exchange arbitrage opportunities
@@ -318,6 +321,57 @@ function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, kra
     return profit - fees;
   };
 
+  // Function to scan for statistical arbitrage opportunities
+  const scanStatistical = useCallback(async () => {
+    if (!binanceApiKey) {
+      addNotification('Binance API key required for statistical arbitrage', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const opportunities = [];
+      for (const pair of statPairs) {
+        const data1 = await getHistoricalData(pair.pair1, '1h', 100);
+        const data2 = await getHistoricalData(pair.pair2, '1h', 100);
+
+        if (data1.length < 100 || data2.length < 100) continue;
+
+        const prices1 = data1.map(d => parseFloat(d[4]));
+        const prices2 = data2.map(d => parseFloat(d[4]));
+
+        const spread = prices1.map((p1, i) => p1 / prices2[i]);
+        const meanSpread = spread.reduce((a, b) => a + b, 0) / spread.length;
+        const stdDev = Math.sqrt(spread.map(x => Math.pow(x - meanSpread, 2)).reduce((a, b) => a + b, 0) / spread.length);
+        
+        const currentSpread = prices1[prices1.length - 1] / prices2[prices2.length - 1];
+        const zScore = (currentSpread - meanSpread) / stdDev;
+
+        const isViable = Math.abs(zScore) > 2.0; // Trade if spread is > 2 std deviations from mean
+        if (isViable) {
+          const direction = zScore > 0 ? `Short ${pair.pair1} / Long ${pair.pair2}` : `Long ${pair.pair1} / Short ${pair.pair2}`;
+          const estimatedProfit = Math.abs(currentSpread - meanSpread) * prices2[prices2.length - 1] * (maxTradeSize / prices1[prices1.length - 1]);
+
+          opportunities.push({
+            pair: `${pair.pair1}/${pair.pair2}`,
+            type: 'statistical',
+            priceDiffPercent: zScore.toFixed(2), // Using z-score as a metric
+            estimatedProfit,
+            direction,
+            isViable,
+            timestamp: Date.now()
+          });
+        }
+      }
+      setOpportunities(opportunities);
+      addNotification(`Found ${opportunities.length} statistical arbitrage opportunities`, 'info');
+    } catch (error) {
+      console.error('Error scanning for statistical arbitrage:', error);
+      addNotification('Failed to scan for statistical arbitrage', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [binanceApiKey, statPairs, maxTradeSize, addNotification]);
+
   // Setup periodic scanning
   useEffect(() => {
     // Initial scan
@@ -325,6 +379,8 @@ function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, kra
       scanCrossExchange();
     } else if (activeTab === 'triangular') {
       scanTriangular();
+    } else if (activeTab === 'statistical') {
+      scanStatistical();
     }
     
     // Setup interval for periodic scanning
@@ -333,11 +389,13 @@ function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, kra
         scanCrossExchange();
       } else if (activeTab === 'triangular') {
         scanTriangular();
+      } else if (activeTab === 'statistical') {
+        scanStatistical();
       }
     }, scanInterval * 1000);
     
     return () => clearInterval(intervalId);
-  }, [scanCrossExchange, scanTriangular, activeTab, scanInterval]);
+  }, [scanCrossExchange, scanTriangular, scanStatistical, activeTab, scanInterval]);
 
   // Prepare chart data for profit history
   const profitChartData = {
@@ -375,7 +433,7 @@ function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, kra
           className={activeTab === 'statistical' ? 'active' : ''} 
           onClick={() => setActiveTab('statistical')}
         >
-          Statistical
+          Statistical (Beta)
         </button>
       </div>
       
@@ -415,7 +473,11 @@ function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, kra
         </div>
         
         <div className="trading-controls">
-          <button onClick={() => activeTab === 'cross-exchange' ? scanCrossExchange() : scanTriangular()} disabled={loading}>
+          <button onClick={() => {
+            if (activeTab === 'cross-exchange') scanCrossExchange();
+            else if (activeTab === 'triangular') scanTriangular();
+            else if (activeTab === 'statistical') scanStatistical();
+          }} disabled={loading}>
             {loading ? 'Scanning...' : 'Scan Now'}
           </button>
           
@@ -454,9 +516,9 @@ function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, kra
           <table>
             <thead>
               <tr>
-                <th>Asset</th>
+                <th>Asset/Pair</th>
                 <th>Type</th>
-                <th>Price Diff (%)</th>
+                <th>Profit % / Z-Score</th>
                 <th>Est. Profit</th>
                 <th>Direction</th>
                 <th>Action</th>
@@ -465,16 +527,16 @@ function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, kra
             <tbody>
               {opportunities.map((opp, index) => (
                 <tr key={index}>
-                  <td>{activeTab === 'triangular' ? 'Triangle' : opp.pair}</td>
+                  <td>{opp.pair}</td>
                   <td>{opp.type || 'cross-exchange'}</td>
-                  <td>{opp.profitPercent?.toFixed(2) || opp.priceDiffPercent?.toFixed(2)}%</td>
+                  <td>{opp.priceDiffPercent?.toFixed(2) || 'N/A'}</td>
                   <td>${opp.estimatedProfit.toFixed(2)}</td>
                   <td>{opp.direction || opp.path}</td>
                   <td>
                     <button 
                       onClick={() => activeTab === 'triangular' ? 
                         executeTriangularTrade(opp) : 
-                        executeArbitrageTrade(opp)
+                        executeArbitrageTrade(opp) // Simplified for now
                       }
                       className="execute-btn"
                     >

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { getHistoricalData } from '../binanceApi';
 import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
+import { useNotification } from '../contexts/NotificationContext';
+import { registerStrategy } from '../core/strategyRegistry';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -276,6 +278,55 @@ function StrategyBuilder() {
     alert('Strategy saved!');
   };
   
+  const [conditions, setConditions] = useState([{ indicator: 'RSI', operator: '<', value: 30, signal: 'BUY' }]);
+  const { addNotification } = useNotification();
+
+  const handleAddCondition = () => {
+    setConditions([...conditions, { indicator: 'RSI', operator: '<', value: 30, signal: 'BUY' }]);
+  };
+
+  const handleConditionChange = (index, field, value) => {
+    const newConditions = [...conditions];
+    newConditions[index][field] = value;
+    setConditions(newConditions);
+  };
+
+  const handleSaveStrategyV2 = () => {
+    try {
+      // This is a simplified example. A real implementation would generate executable JS code.
+      const strategyLogic = (ctx) => {
+        // In a real scenario, you'd calculate indicators from ctx.historicalData
+        // For this demo, we'll use mock values.
+        const mockIndicators = {
+          RSI: 50, // Replace with actual calculation
+          SMA50: ctx.marketData.price * 0.98,
+          SMA200: ctx.marketData.price * 0.95,
+        };
+
+        for (const condition of conditions) {
+          const indicatorValue = mockIndicators[condition.indicator];
+          let conditionMet = false;
+          switch (condition.operator) {
+            case '<': conditionMet = indicatorValue < condition.value; break;
+            case '>': conditionMet = indicatorValue > condition.value; break;
+            case 'crosses_above': conditionMet = mockIndicators.SMA50 > mockIndicators.SMA200; break; // Simplified
+            default: break;
+          }
+
+          if (conditionMet) {
+            return { signal: condition.signal, confidence: 0.75, reason: `Custom rule met: ${condition.indicator} ${condition.operator} ${condition.value}` };
+          }
+        }
+        return { signal: 'HOLD', confidence: 0.5, reason: 'No custom rules met.' };
+      };
+
+      registerStrategy(strategyName, strategyLogic);
+      addNotification(`Strategy "${strategyName}" saved and registered!`, 'success');
+    } catch (error) {
+      addNotification(`Error saving strategy: ${error.message}`, 'error');
+    }
+  };
+
   return (
     <div style={{ padding: 20 }}>
       <h2>Visual Strategy Builder</h2>
@@ -559,6 +610,35 @@ function StrategyBuilder() {
           </div>
         </div>
       )}
+
+      <div style={{ marginTop: 40 }}>
+        <h3>Simple Strategy Builder</h3>
+        
+        {conditions.map((cond, index) => (
+          <div key={index} style={{ display: 'flex', gap: 10, marginBottom: 10, alignItems: 'center' }}>
+            <span>IF</span>
+            <select value={cond.indicator} onChange={(e) => handleConditionChange(index, 'indicator', e.target.value)}>
+              <option>RSI</option>
+              <option>SMA50</option>
+              <option>SMA200</option>
+            </select>
+            <select value={cond.operator} onChange={(e) => handleConditionChange(index, 'operator', e.target.value)}>
+              <option>&lt;</option>
+              <option>&gt;</option>
+              <option>crosses_above</option>
+            </select>
+            <input type="number" value={cond.value} onChange={(e) => handleConditionChange(index, 'value', e.target.value)} style={{ width: 80 }} />
+            <span>THEN</span>
+            <select value={cond.signal} onChange={(e) => handleConditionChange(index, 'signal', e.target.value)}>
+              <option>BUY</option>
+              <option>SELL</option>
+            </select>
+          </div>
+        ))}
+
+        <button onClick={handleAddCondition}>+ Add Condition</button>
+        <button onClick={handleSaveStrategyV2} style={{ marginLeft: 20, backgroundColor: '#28a745', color: 'white' }}>Save Strategy</button>
+      </div>
     </div>
   );
 }

@@ -1,5 +1,7 @@
 import express from 'express';
 import cors from 'cors';
+import bodyParser from 'body-parser';
+import axios from 'axios';
 import { WebSocketServer } from 'ws';
 import fs from 'fs';
 import path from 'path';
@@ -69,6 +71,7 @@ app.use(cors({
 }));
 
 app.use(express.json());
+app.use(bodyParser.json());
 
 // Simple in-memory clients
 let wsClients = new Set();
@@ -264,63 +267,45 @@ app.post('/api/strategy/register', authenticate, authorize('system'), (req, res)
   }
 });
 
-// SECURITY: Create a sandboxed strategy with limited functionality
-function createSandboxedStrategy(code) {
-  // This is a simplified example - a real implementation would use a proper JS sandbox
-  return async (ctx) => {
-    // Allowed variables and functions in the strategy context
-    const sandbox = {
-      marketData: ctx.marketData,
-      historicalData: ctx.historicalData,
-      aiAnalysis: ctx.aiAnalysis,
-      indicators: {
-        calculateRSI: (prices, period) => {/* safe implementation */},
-        calculateEMA: (prices, period) => {/* safe implementation */},
-        calculateMACD: (prices) => {/* safe implementation */}
-      },
-      utils: {
-        log: console.log,
-        max: Math.max,
-        min: Math.min,
-        round: Math.round
-      },
-      // Result object that the strategy should modify
-      result: {
-        signal: 'HOLD',
-        reason: '',
-        confidence: 0.5
-      }
-    };
-    
-    try {
-      // Execute the strategy in a VM/sandbox (simplified for example)
-      // In a real implementation, use a proper sandbox like vm2
-      const wrappedCode = `
-        (function(marketData, historicalData, aiAnalysis, indicators, utils, result) {
-          ${code}
-          return result;
-        })(sandbox.marketData, sandbox.historicalData, sandbox.aiAnalysis, 
-           sandbox.indicators, sandbox.utils, sandbox.result);
-      `;
-      
-      // Still using Function but with controlled inputs and outputs
-      // In production, use a proper sandbox library
-      // eslint-disable-next-line no-new-func
-      const executeFn = new Function('sandbox', wrappedCode);
-      const strategyResult = executeFn(sandbox);
-      
-      // Validate result has expected properties
-      if (!['BUY', 'SELL', 'HOLD'].includes(strategyResult.signal)) {
-        throw new Error('Invalid signal returned');
-      }
-      
-      return strategyResult;
-    } catch (error) {
-      console.error('Strategy execution error:', error);
-      return { signal: 'HOLD', reason: `Strategy error: ${error.message}`, confidence: 0 };
-    }
-  };
-}
+// TradingView Webhook Endpoint
+app.post('/api/webhook/tradingview', (req, res) => {
+  const signal = req.body;
+  console.log('[Webhook] Received signal from TradingView:', signal);
+
+  // --- How it Functions: ---
+  // 1. TradingView sends an alert with a JSON message to this public URL.
+  // 2. We validate the signal for security and correctness.
+  // 3. We translate the signal into a command for our Python bot.
+  // 4. The command is sent to the Python bot's local command server.
+
+  if (!signal || !signal.symbol || !signal.action || !signal.secret) {
+    return res.status(400).json({ error: 'Invalid signal format. Expecting { symbol, action, secret, type? }.' });
+  }
+
+  // SECURITY: The secret ensures that only your TradingView alerts can trigger trades.
+  if (signal.secret !== process.env.TRADINGVIEW_WEBHOOK_SECRET) {
+    console.warn('[Webhook] Invalid secret received.');
+    return res.status(403).json({ error: 'Forbidden. Invalid secret.' });
+  }
+
+  // Forward the command to the Python bot running on localhost:5056
+  axios.post('http://localhost:5056/command', {
+    symbol: signal.symbol,
+    action: signal.action.toUpperCase(), // e.g., 'BUY', 'SELL'
+    type: signal.type || 'ZEN_MASTER' // e.g., 'ZEN_MASTER' or 'ARBITRAGE_SCAN'
+  })
+  .then(response => {
+    console.log('[Webhook] Command forwarded to Python bot successfully.');
+    res.status(200).json({ message: 'Signal received and forwarded.', botResponse: response.data });
+  })
+  .catch(error => {
+    console.error('[Webhook] Error forwarding command to Python bot:', error.message);
+    res.status(500).json({ error: 'Failed to forward signal to trading bot.' });
+  });
+});
+
+// Serve React App (for production builds)
+app.use(express.static(path.join(__dirname, '../../build')));
 
 const server = app.listen(PORT, () => {
   console.log(`[backend] control server listening on :${PORT}`);

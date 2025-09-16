@@ -7,6 +7,7 @@ import StrategyBuilder from './components/StrategyBuilder';
 import PortfolioDashboard from './components/PortfolioDashboard';
 import OrderManager from './components/OrderManager';
 import PerformanceTracker from './components/PerformanceTracker';
+import TradingViewChart from './components/TradingViewChart'; // Import the new component
 import About from './components/About';
 import Layout from './components/Layout';
 import { saveSettings, loadSettings, clearSettings } from './settingsManager';
@@ -139,47 +140,6 @@ function App() {
         geminiAiApiKey={geminiAiApiKey}
       />
     ),
-    portfolio: <PortfolioDashboard binanceApiKey={binanceApiKey} binanceApiSecret={binanceApiSecret} />,
-    orders: <OrderManager binanceApiKey={binanceApiKey} binanceApiSecret={binanceApiSecret} />,
-    performance: <PerformanceTracker binanceApiKey={binanceApiKey} binanceApiSecret={binanceApiSecret} />,
-    scanner: <MarketScanner binanceApiKey={binanceApiKey} onSelectSymbol={handleSelectSymbolFromScanner} />,
-    arbitrage: <ArbitrageDashboard binanceApiKey={binanceApiKey} binanceApiSecret={binanceApiSecret} krakenApiKey={krakenApiKey} krakenApiSecret={krakenApiSecret} />,
-    backtesting: <BacktestingDashboard binanceApiKey={binanceApiKey} strategy={strategy} symbol={symbol} />,
-    strategyBuilder: <StrategyBuilder />,
-    about: <About />,
-  };
-
-  return (
-    <div className={`App ${theme}`}>
-      <SystemProvider>
-        <Layout activeView={activeView} setActiveView={setActiveView}>
-          {views[activeView] || views.trading}
-        </Layout>
-      </SystemProvider>
-    </div>
-  );
-}
-
-export default App;
-              <option value="mlPredictor">ML Price Predictor</option>
-              <option value="custom">Custom (advanced)</option>
-            </select>
-          </label>
-        </div>
-        <button onClick={clearSettings} style={{ marginTop: 20, backgroundColor: '#ffc107' }}>
-          Clear and Reset All Saved Settings
-        </button>
-      </div>
-    ),
-    trading: (
-      <Dashboard
-        binanceApiKey={binanceApiKey}
-        binanceApiSecret={binanceApiSecret}
-        strategy={strategy}
-        symbol={symbol}
-        geminiAiApiKey={geminiAiApiKey}
-      />
-    ),
     portfolio: (
       <PortfolioDashboard
         binanceApiKey={binanceApiKey}
@@ -199,6 +159,46 @@ export default App;
       />
     ),
     scanner: (
+      <MarketScanner
+        binanceApiKey={binanceApiKey}
+        binanceApiSecret={binanceApiSecret}
+        strategy={strategy}
+        onSelectSymbol={handleSelectSymbolFromScanner}
+      />
+    ),
+    arbitrage: (
+      <ArbitrageDashboard
+        binanceApiKey={binanceApiKey}
+        binanceApiSecret={binanceApiSecret}
+        krakenApiKey={krakenApiKey}
+        krakenApiSecret={krakenApiSecret}
+      />
+    ),
+    backtesting: (
+      <BacktestingDashboard
+        binanceApiKey={binanceApiKey}
+        binanceApiSecret={binanceApiSecret}
+        strategy={strategy}
+        symbol={symbol}
+      />
+    ),
+    strategyBuilder: <StrategyBuilder />,
+    tradingview: <TradingViewChart symbol={symbol} />, // Add new view
+    about: <About />,
+  };
+
+  return (
+    <div className={`App ${theme}`}>
+      <SystemProvider>
+        <Layout activeView={activeView} setActiveView={setActiveView}>
+          {views[activeView] || views.trading}
+        </Layout>
+      </SystemProvider>
+    </div>
+  );
+}
+
+export default App;
       <MarketScanner
         binanceApiKey={binanceApiKey}
         binanceApiSecret={binanceApiSecret}

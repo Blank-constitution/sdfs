@@ -13,6 +13,7 @@ A comprehensive cryptocurrency trading platform with advanced features including
 - Visual strategy builder
 - Strategy backtesting
 - AI-powered market analysis (Google Gemini)
+- **TradingView Integration**: Interactive charts and webhook-based trade execution.
 - Dark/Light theme
 
 ## Getting Started
@@ -23,6 +24,7 @@ A comprehensive cryptocurrency trading platform with advanced features including
 - npm (v10 or higher)
 - Exchange API keys (Binance, Kraken, Gemini)
 - Google Gemini API key (for AI analysis)
+- `ngrok` or a public server for receiving TradingView webhooks during development.
 
 ### Installation
 
@@ -100,6 +102,46 @@ When using this method, you'll need to run `vercel --prod` each time you want to
 2. Select a trading pair and strategy
 3. Use the navigation buttons to switch between different views
 4. Enable live trading only when you're ready to execute real trades
+
+## TradingView Integration
+
+The system is integrated with TradingView in two ways:
+
+### 1. Interactive Charts
+
+The application includes a "Chart" view that uses the TradingView Lightweight Charts library to display real-time, interactive candlestick charts for the selected trading pair.
+
+### 2. Webhook Trade Execution
+
+You can automate trades by sending alerts from your TradingView account to this application's backend.
+
+#### How to Set Up Webhook Trading
+
+1.  **Expose Your Local Server**: TradingView needs a public URL to send webhooks to. During development, you can use a tool like `ngrok`.
+    ```bash
+    # Expose the backend server port (default 5055)
+    ngrok http 5055
+    ```
+    `ngrok` will give you a public URL (e.g., `https://<random-string>.ngrok.io`).
+
+2.  **Set Environment Variables**:
+    - In your `.env` file, set `TRADINGVIEW_WEBHOOK_SECRET` to a strong, random secret key.
+    - Your backend server URL for the webhook is `https://<your-ngrok-url>/api/webhook/tradingview`.
+
+3.  **Configure TradingView Alert**:
+    - In TradingView, create an alert on a chart.
+    - In the "Notifications" tab, enable "Webhook URL" and paste your public URL.
+    - In the "Message" box, enter JSON with the exact following format. The `secret` must match the one in your `.env` file.
+      ```json
+      {
+        "symbol": "{{ticker}}",
+        "action": "BUY",
+        "secret": "your-very-strong-and-random-secret-key"
+      }
+      ```
+    - For a sell alert, change `"action"` to `"SELL"`.
+
+When the alert triggers, TradingView will send this message to your backend, which will command the Python bot to execute the trade.
 
 ## Arbitrage Trading Capabilities
 

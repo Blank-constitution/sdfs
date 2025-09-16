@@ -28,8 +28,9 @@ class TapeFilter:
         
         for trade in recent_trades[-5:]:
             trade_volume = float(trade.get('quantity', 0))
-            if trade_volume > threshold_multiplier * avg_volume:
+            if avg_volume > 0 and trade_volume > threshold_multiplier * avg_volume:
                 return True
+                
         return False
     
     def detects_buyer_dominance(self, window_size: int = 20) -> bool:
@@ -63,6 +64,7 @@ class TapeFilter:
             period_volume = sum(float(trade.get('quantity', 0)) for trade in period_trades)
             period_volumes.append(period_volume)
             
+        # Check if volumes are consistently increasing
         return all(period_volumes[i] < period_volumes[i+1] for i in range(periods-1))
 
     def detects_large_trade_sequence(self, min_sequence: int = 3, threshold: float = 10.0) -> bool:
@@ -86,21 +88,19 @@ class TapeFilter:
             if size > threshold * median_size:
                 if last_direction is None or last_direction == is_buyer_aggressor:
                     sequence_count += 1
-                    last_direction = is_buyer_aggressor
                 else:
+                    # Direction changed, reset sequence
                     sequence_count = 1
-                    last_direction = is_buyer_aggressor
+                last_direction = is_buyer_aggressor
             else:
+                # Not a large trade, reset sequence
                 sequence_count = 0
                 
             if sequence_count >= min_sequence:
                 return True
+                
         return False
-            period_volumes.append(period_volume)
-            
-        # Check if volumes are consistently increasing
-        return all(period_volumes[i] < period_volumes[i+1] for i in range(periods-1))
-    
+        return False
     def detects_large_trade_sequence(self, min_sequence: int = 3, threshold: float = 10.0) -> bool:
         """
         Detects a sequence of consecutive large trades in the same direction,

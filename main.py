@@ -4,6 +4,7 @@ import logging
 import sys
 from DataBridge import MarketDataBridge
 from ZenMaster import ZenMaster
+from flask import Flask, request, jsonify
 
 # Configure logging
 logging.basicConfig(
@@ -70,6 +71,42 @@ def sdfs_wrapper(data_bridge):
         on_depth=on_depth_update
     )
 
+def create_command_server(bot_instance):
+    """Creates a Flask server to receive commands from the Node.js backend."""
+    app = Flask(__name__)
+    
+    @app.route('/command', methods=['POST'])
+    def handle_command():
+        data = request.json
+        logger.info(f"[Command Server] Received command: {data}")
+        
+        command_type = data.get('type', 'ZEN_MASTER')
+        
+        # --- How it Functions: ---
+        # This endpoint acts as the brain's "ear," listening for external commands.
+        # A command from TradingView (via the Node.js server) can bypass the ZenMaster's
+        # normal patient meditation and force an immediate action. This is perfect for
+        # strategies defined externally in Pine Script.
+        
+        if command_type == 'ZEN_MASTER':
+            action = data.get('action')
+            if action == 'BUY':
+                bot_instance.enter_trade(bot_instance.data_bridge.current_price)
+                return jsonify({"status": "BUY command executed for ZenMaster"}), 200
+            elif action == 'SELL':
+                bot_instance.exit_trade(bot_instance.data_bridge.current_price)
+                return jsonify({"status": "SELL command executed for ZenMaster"}), 200
+        
+        elif command_type == 'ARBITRAGE_SCAN':
+            # Future enhancement: This could trigger a high-priority scan
+            # in an arbitrage module.
+            logger.info("[Command Server] Arbitrage scan trigger received (feature placeholder).")
+            return jsonify({"status": "Arbitrage scan triggered"}), 200
+            
+        return jsonify({"error": "Invalid command type or action"}), 400
+
+    return app
+
 def main():
     """
     Main function that orchestrates the Digital Monk trading system.
@@ -115,6 +152,15 @@ def main():
     # Create the Zen Master
     zen_master = ZenMaster(data_bridge, symbol)
     logger.info("ZenMaster initialized and ready for meditation")
+
+    # Create and start the command server thread
+    command_app = create_command_server(zen_master)
+    command_thread = threading.Thread(
+        target=lambda: command_app.run(host='0.0.0.0', port=5056),
+        daemon=True
+    )
+    command_thread.start()
+    logger.info("Command server started on port 5056")
     
     # Main loop
     try:

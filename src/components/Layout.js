@@ -13,6 +13,7 @@ const Layout = ({ children, activeView, setActiveView }) => {
     { id: 'arbitrage', label: 'Arbitrage Bot' },
     { id: 'settings', label: 'Settings' },
     { id: 'about', label: 'About' },
+    { id: 'tradingview', label: 'Chart' }, // TradingView chart button
   ];
 
   return (
