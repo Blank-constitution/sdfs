@@ -101,6 +101,41 @@ When using this method, you'll need to run `vercel --prod` each time you want to
 3. Use the navigation buttons to switch between different views
 4. Enable live trading only when you're ready to execute real trades
 
+## Arbitrage Trading Capabilities
+
+The platform includes a sophisticated arbitrage system that identifies and executes profitable trading opportunities across three distinct strategies:
+
+### 1. Cross-Exchange Arbitrage
+- **Mechanism**: Exploits price differences of the same asset between different exchanges (e.g., BTC cheaper on Binance, more expensive on Kraken)
+- **Implementation**: Real-time scanning of common pairs across exchanges with configurable profit thresholds
+- **Execution**: Simultaneous buy on cheaper exchange and sell on more expensive exchange
+- **Risk Controls**: Customizable minimum profit percentage, accounting for fees and slippage
+
+### 2. Triangular Arbitrage
+- **Mechanism**: Identifies profitable trading loops within a single exchange (e.g., BTC → ETH → USDT → BTC)
+- **Implementation**: Analyzes all possible triangular paths for a selected base asset
+- **Execution**: Sequential execution of all legs in the triangular path
+- **Example**: Convert 1 BTC to ETH, then ETH to USDT, then USDT back to BTC ending with >1 BTC
+
+### 3. Statistical Arbitrage (Beta)
+- **Mechanism**: Mean-reversion strategies on correlated pairs
+- **Implementation**: Tracks historical correlation and deviation patterns
+- **Execution**: Opens positions when assets deviate from statistical norms, closes when relationship normalizes
+
+### Arbitrage Dashboard Features
+- **Real-time Opportunity Scanner**: Continuously monitors markets for profitable opportunities
+- **Performance Tracking**: Visual display of historical arbitrage profits
+- **Auto-Trading**: Optional automated execution when opportunities exceed specified thresholds
+- **Custom Parameters**: Adjustable minimum profit percentage, trade size, and scan interval
+- **Manual Override**: Option to manually review and execute individual arbitrage opportunities
+
+### Requirements for Arbitrage Trading
+- API keys with trading permissions for all exchanges
+- Sufficient balances on all exchanges involved
+- Recommended: Start with small position sizes to validate profitability accounting for fees and execution latency
+
+To access the Arbitrage Dashboard, select "Arbitrage" from the main navigation menu.
+
 ## How Each Core Feature Works (Internal Overview)
 
 ### 1. Live Trading Engine
@@ -157,9 +192,12 @@ When using this method, you'll need to run `vercel --prod` each time you want to
 - Engine interprets JSON each evaluation cycle to output a signal.
 
 ### 8. Arbitrage Dashboard
-- Fetches best bid/ask (multi-exchange planned).
-- Computes spread %: (higherBid - lowerAsk) / lowerAsk.
-- Flags above threshold opportunities (execution layer optional).
+- Runs continuous scans of markets for arbitrage opportunities.
+- Implements three strategies: cross-exchange, triangular, and statistical arbitrage.
+- Calculates real profit potential accounting for exchange fees, slippage, and execution risks.
+- Maintains historical performance metrics with visualizations.
+- Features auto-trading capability with configurable risk parameters.
+- Uses WebSocket connections where available for low-latency price updates.
 
 ### 9. Notification System
 - Global context holds queue.
