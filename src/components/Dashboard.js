@@ -8,6 +8,8 @@ import StrategyChef from '../metaLearning/StrategyChef';
 import PortfolioManager from '../portfolio/PortfolioManager';
 import RiskManager from '../risk/RiskManager';
 import HistoryManager from '../data/HistoryManager';
+import { useNotification } from '../contexts/NotificationContext'; // Import useNotification
+import SystemStatusPanel from './SystemStatusPanel';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
@@ -46,6 +48,10 @@ function Dashboard({ binanceApiKey, binanceApiSecret, strategy, symbol, geminiAi
   const [showPortfolioSettings, setShowPortfolioSettings] = useState(false);
   const strategyChef = useRef(null);
   const lastExecutedSignal = useRef(null);
+  const [tradingSignal, setTradingSignal] = useState({ signal: 'HOLD', reason: 'Initializing...' });
+  const [isLiveTradingEnabled, setIsLiveTradingEnabled] = useState(false); // Safety toggle
+  const { addNotification } = useNotification(); // Get notification function
+  const lastSignalRef = useRef(null);
 
   // Log every action and AI analysis
   useEffect(() => {
@@ -419,9 +425,62 @@ function Dashboard({ binanceApiKey, binanceApiSecret, strategy, symbol, geminiAi
     }
   }, [historicalData, symbol]);
 
+  // Effect to run the trading strategy and execute trades if live
+  useEffect(() => {
+    const executeStrategy = async () => {
+      if (marketData && historicalData) {
+        try {
+          const signalResult = await runStrategy(strategy, marketData, historicalData, geminiAiApiKey);
+          setTradingSignal(signalResult);
+
+          // --- LIVE TRADING LOGIC ---
+          if (isLiveTradingEnabled && signalResult.signal !== 'HOLD' && signalResult.signal !== lastSignalRef.current) {
+            lastSignalRef.current = signalResult.signal; // Prevent duplicate orders for the same signal
+            addNotification(`New signal: ${signalResult.signal}. Placing order...`, 'info');
+            
+            // Example: Trade a fixed quantity of 0.001 BTC
+            const quantity = symbol === 'BTCUSDT' ? 0.001 : 1; // Adjust quantity based on the symbol
+
+            try {
+              const orderResult = await placeOrder(binanceApiKey, binanceApiSecret, symbol, signalResult.signal, quantity);
+              addNotification(`Order placed successfully! Order ID: ${orderResult.orderId}`, 'success');
+            } catch (orderError) {
+              addNotification(`Failed to place order: ${orderError.msg || 'Unknown error'}`, 'error');
+            }
+          }
+        } catch (error) {
+          // ...existing code...
+        }
+      }
+    };
+
+    const interval = setInterval(executeStrategy, 30000); // Run every 30 seconds
+    return () => clearInterval(interval);
+  }, [marketData, historicalData, strategy, geminiAiApiKey, binanceApiKey, binanceApiSecret, symbol, isLiveTradingEnabled, addNotification]);
+
   return (
     <div style={{ padding: 20 }}>
+      <SystemStatusPanel />
       <h2>Trading Bot Dashboard</h2>
+      <div style={{ marginBottom: 20, padding: 10, border: '1px solid #ccc' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <h3>{symbol} Market Data</h3>
+          <label style={{ color: isLiveTradingEnabled ? 'green' : 'red', fontWeight: 'bold' }}>
+            <input
+              type="checkbox"
+              checked={isLiveTradingEnabled}
+              onChange={e => setIsLiveTradingEnabled(e.target.checked)}
+            />
+            Enable Live Trading
+          </label>
+        </div>
+        {marketData ? (
+          <div>
+            <div>Price: {marketData.price}</div>
+            <div>24h Change: {marketData.priceChangePercent}%</div>
+          </div>
+        ) : <div>Loading...</div>}
+      </div>
       
       {/* Portfolio Summary Card */}
       <div style={{ marginBottom: 20, padding: 10, border: '1px solid #ccc', backgroundColor: '#f8f9fa' }}>

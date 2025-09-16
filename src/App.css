@@ -191,6 +191,10 @@
   padding: 0;
 }
 
+.SystemStatusPanel button {
+  font-size: 12px;
+}
+
 @keyframes slideIn {
   from {
     transform: translateX(100%);

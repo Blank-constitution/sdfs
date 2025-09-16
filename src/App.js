@@ -8,9 +8,10 @@ import PortfolioDashboard from './components/PortfolioDashboard';
 import OrderManager from './components/OrderManager';
 import PerformanceTracker from './components/PerformanceTracker';
 import About from './components/About';
-import Layout from './components/Layout'; // Import the new Layout component
+import Layout from './components/Layout';
 import { saveSettings, loadSettings, clearSettings } from './settingsManager';
 import { useTheme } from './contexts/ThemeContext';
+import { SystemProvider } from './contexts/SystemContext';
 import './App.css';
 
 const initialSettings = loadSettings();
@@ -24,9 +25,6 @@ function App() {
   // State for storing Kraken API keys
   const [krakenApiKey, setKrakenApiKey] = useState(initialSettings.krakenApiKey || '');
   const [krakenApiSecret, setKrakenApiSecret] = useState(initialSettings.krakenApiSecret || '');
-  // State for storing Gemini API keys
-  const [geminiApiKey, setGeminiApiKey] = useState(initialSettings.geminiApiKey || '');
-  const [geminiApiSecret, setGeminiApiSecret] = useState(initialSettings.geminiApiSecret || '');
   // State for Google's Gemini AI API Key
   const [geminiAiApiKey, setGeminiAiApiKey] = useState(initialSettings.geminiAiApiKey || '');
   const [strategy, setStrategy] = useState(initialSettings.strategy || 'conservativeConfluence');
@@ -40,8 +38,6 @@ function App() {
       binanceApiSecret,
       krakenApiKey,
       krakenApiSecret,
-      geminiApiKey,
-      geminiApiSecret,
       geminiAiApiKey,
       strategy,
       symbol,
@@ -52,8 +48,6 @@ function App() {
     binanceApiSecret,
     krakenApiKey,
     krakenApiSecret,
-    geminiApiKey,
-    geminiApiSecret,
     geminiAiApiKey,
     strategy,
     symbol,
@@ -104,22 +98,6 @@ function App() {
             placeholder="Kraken API Secret"
             value={krakenApiSecret}
             onChange={e => setKrakenApiSecret(e.target.value)}
-          />
-        </div>
-        <div style={{ marginTop: 10 }}>
-          <strong>Gemini:</strong>&nbsp;&nbsp;&nbsp;
-          <input
-            type="text"
-            placeholder="Gemini API Key"
-            value={geminiApiKey}
-            onChange={e => setGeminiApiKey(e.target.value)}
-            style={{ marginRight: 10 }}
-          />
-          <input
-            type="password"
-            placeholder="Gemini API Secret"
-            value={geminiApiSecret}
-            onChange={e => setGeminiApiSecret(e.target.value)}
           />
         </div>
         <div style={{ marginTop: 10 }}>
@@ -197,8 +175,6 @@ function App() {
         binanceApiSecret={binanceApiSecret}
         krakenApiKey={krakenApiKey}
         krakenApiSecret={krakenApiSecret}
-        geminiApiKey={geminiApiKey}
-        geminiApiSecret={geminiApiSecret}
       />
     ),
     backtesting: (
@@ -210,6 +186,30 @@ function App() {
       />
     ),
     strategyBuilder: (
+      <StrategyBuilder
+        binanceApiKey={binanceApiKey}
+        binanceApiSecret={binanceApiSecret}
+        krakenApiKey={krakenApiKey}
+        krakenApiSecret={krakenApiSecret}
+        geminiApiKey={geminiAiApiKey}
+        geminiApiSecret={geminiAiApiSecret}
+      />
+    ),
+    about: <About />,
+  };
+
+  return (
+    <div className={`App ${theme}`}>
+      <SystemProvider>
+        <Layout activeView={activeView} setActiveView={setActiveView}>
+          {views[activeView] || views.trading}
+        </Layout>
+      </SystemProvider>
+    </div>
+  );
+}
+
+export default App;
       <StrategyBuilder
         binanceApiKey={binanceApiKey}
         binanceApiSecret={binanceApiSecret}

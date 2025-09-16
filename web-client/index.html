@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trading Bot Monitor</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: #f5f5f5;
+      color: #333;
+    }
+    .container {
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    .status {
+      display: flex;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      margin-right: 10px;
+    }
+    .connected { background-color: #4caf50; }
+    .disconnected { background-color: #f44336; }
+    .signal-buy { color: #4caf50; font-weight: bold; }
+    .signal-sell { color: #f44336; font-weight: bold; }
+    .signal-hold { color: #ff9800; font-weight: bold; }
+    h1 { font-size: 1.5rem; margin-bottom: 1rem; }
+    h2 { font-size: 1.2rem; margin-bottom: 0.8rem; }
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px;
+      border: none;
+      border-radius: 5px;
+      background: #2196F3;
+      color: white;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: #cccccc;
+      cursor: not-allowed;
+    }
+    button.danger { background: #f44336; }
+    button.success { background: #4caf50; }
+    button.warning { background: #ff9800; }
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid #eee;
+    }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    input {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    .heartbeat {
+      font-size: 12px;
+      color: #888;
+      text-align: right;
+    }
+    .price-chart {
+      width: 100%;
+      height: 200px;
+      margin-top: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div id="login-screen" class="card">
+      <h1>Trading Bot Monitor</h1>
+      <form id="login-form" class="login-form">
+        <input type="text" id="server" placeholder="Server URL (ws://...)" value="ws://localhost:5055/ws">
+        <input type="text" id="username" placeholder="Username" required>
+        <input type="password" id="password" placeholder="Password" required>
+        <button type="submit">Connect</button>
+      </form>
+    </div>
+    
+    <div id="main-screen" style="display: none;">
+      <div class="card">
+        <div class="status">
+          <div id="status-dot" class="status-dot disconnected"></div>
+          <div id="status-text">Disconnected</div>
+        </div>
+        <div class="controls">
+          <button id="toggle-live" class="success" disabled>Enable Live Trading</button>
+          <button id="toggle-kill" class="danger" disabled>Emergency Stop</button>
+        </div>
+      </div>
+      
+      <div class="card">
+        <h2>Current Status</h2>
+        <div class="data-row">
+          <span>Symbol:</span>
+          <span id="current-symbol">--</span>
+        </div>
+        <div class="data-row">
+          <span>Strategy:</span>
+          <span id="current-strategy">--</span>
+        </div>
+        <div class="data-row">
+          <span>Live Trading:</span>
+          <span id="live-status">--</span>
+        </div>
+        <div class="data-row">
+          <span>Last Signal:</span>
+          <span id="last-signal">--</span>
+        </div>
+        <div class="data-row">
+          <span>Signal Reason:</span>
+          <span id="signal-reason">--</span>
+        </div>
+        <div class="heartbeat" id="heartbeat">Last update: Never</div>
+      </div>
+      
+      <div class="card">
+        <h2>Recent Orders</h2>
+        <div id="recent-orders">No orders yet</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let ws = null;
+    let token = null;
+    let systemState = {
+      connected: false,
+      liveTrading: false,
+      killSwitch: false,
+      symbol: '',
+      strategy: '',
+      lastSignal: null,
+      lastHeartbeat: null,
+      orders: []
+    };
+    
+    // DOM Elements
+    const loginScreen = document.getElementById('login-screen');
+    const mainScreen = document.getElementById('main-screen');
+    const loginForm = document.getElementById('login-form');
+    const statusDot = document.getElementById('status-dot');
+    const statusText = document.getElementById('status-text');
+    const toggleLiveBtn = document.getElementById('toggle-live');
+    const toggleKillBtn = document.getElementById('toggle-kill');
+    const currentSymbol = document.getElementById('current-symbol');
+    const currentStrategy = document.getElementById('current-strategy');
+    const liveStatus = document.getElementById('live-status');
+    const lastSignal = document.getElementById('last-signal');
+    const signalReason = document.getElementById('signal-reason');
+    const heartbeat = document.getElementById('heartbeat');
+    const recentOrders = document.getElementById('recent-orders');
+    
+    // Login form submission
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const serverUrl = document.getElementById('server').value;
+      
+      try {
+        // Get the base URL for HTTP requests
+        const baseUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://').replace('/ws', '');
+        
+        // Authenticate with the server
+        const response = await fetch(`${baseUrl}/api/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Authentication failed');
+        }
+        
+        const data = await response.json();
+        token = data.token;
+        
+        // Connect to WebSocket with the token
+        connectWebSocket(serverUrl, token);
+        
+        // Show main screen
+        loginScreen.style.display = 'none';
+        mainScreen.style.display = 'block';
+      } catch (error) {
+        alert('Login failed: ' + error.message);
+      }
+    });
+    
+    // Connect to WebSocket
+    function connectWebSocket(url, token) {
+      if (ws) {
+        ws.close();
+      }
+      
+      ws = new WebSocket(url);
+      
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        // Send authentication message
+        ws.send(JSON.stringify({
+          type: 'authenticate',
+          token
+        }));
+      };
+      
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          handleWebSocketMessage(message);
+        } catch (error) {
+          console.error('Error parsing WebSocket message:', error);
+        }
+      };
+      
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        updateConnectionStatus(false);
+        
+        // Try to reconnect after 5 seconds
+        setTimeout(() => {
+          if (token) {
+            connectWebSocket(url, token);
+          }
+        }, 5000);
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        updateConnectionStatus(false);
+      };
+    }
+    
+    // Handle WebSocket messages
+    function handleWebSocketMessage(message) {
+      console.log('Received message:', message);
+      
+      switch (message.type) {
+        case 'AUTHENTICATED':
+          updateConnectionStatus(true);
+          updateSystemState(message.payload.orchestrator);
+          toggleLiveBtn.disabled = false;
+          toggleKillBtn.disabled = false;
+          break;
+          
+        case 'AUTH_ERROR':
+        case 'AUTH_REQUIRED':
+          alert('Authentication error: ' + (message.payload.error || 'Unknown error'));
+          updateConnectionStatus(false);
+          break;
+          
+        case 'HEARTBEAT':
+          systemState.lastHeartbeat = message.payload.ts;
+          updateHeartbeat();
+          break;
+          
+        case 'MARKET_SNAPSHOT':
+          // Update price if available
+          if (message.payload.marketData) {
+            const price = message.payload.marketData.lastPrice || message.payload.marketData.price;
+            if (price) {
+              currentSymbol.textContent = `${systemState.symbol} ($${parseFloat(price).toFixed(2)})`;
+            }
+          }
+          break;
+          
+        case 'STRATEGY_SIGNAL':
+          systemState.lastSignal = message.payload;
+          updateSignalDisplay();
+          break;
+          
+        case 'ORDER_EXECUTED':
+          addOrder(message.payload);
+          break;
+          
+        case 'SYSTEM_STATUS':
+          updateSystemState(message.payload);
+          break;
+          
+        case 'TRADING_STATE_CHANGED':
+          systemState.liveTrading = message.payload.live;
+          updateLiveStatus();
+          break;
+          
+        case 'KILL_SWITCH_TOGGLED':
+          systemState.killSwitch = message.payload.active;
+          updateKillSwitch();
+          break;
+      }
+    }
+    
+    // Update connection status
+    function updateConnectionStatus(connected) {
+      systemState.connected = connected;
+      statusDot.className = 'status-dot ' + (connected ? 'connected' : 'disconnected');
+      statusText.textContent = connected ? 'Connected' : 'Disconnected';
+      toggleLiveBtn.disabled = !connected;
+      toggleKillBtn.disabled = !connected;
+    }
+    
+    // Update system state
+    function updateSystemState(state) {
+      if (!state) return;
+      
+      if (state.symbol) systemState.symbol = state.symbol;
+      if (state.strategy) systemState.strategy = state.strategy;
+      if (state.liveTrading !== undefined) systemState.liveTrading = state.liveTrading;
+      if (state.risk && state.risk.killSwitch !== undefined) systemState.killSwitch = state.risk.killSwitch;
+      
+      currentSymbol.textContent = systemState.symbol;
+      currentStrategy.textContent = systemState.strategy;
+      updateLiveStatus();
+      updateKillSwitch();
+    }
+    
+    // Update heartbeat display
+    function updateHeartbeat() {
+      if (!systemState.lastHeartbeat) return;
+      
+      const now = Date.now();
+      const diff = Math.floor((now - systemState.lastHeartbeat) / 1000);
+      heartbeat.textContent = `Last update: ${diff} seconds ago`;
+      
+      // Highlight if recent
+      if (diff < 5) {
+        heartbeat.style.color = '#4caf50';
+        setTimeout(() => {
+          heartbeat.style.color = '#888';
+        }, 1000);
+      }
+    }
+    
+    // Update signal display
+    function updateSignalDisplay() {
+      if (!systemState.lastSignal) return;
+      
+      const signal = systemState.lastSignal.signal;
+      const reason = systemState.lastSignal.reason || '';
+      
+      lastSignal.textContent = signal;
+      lastSignal.className = '';
+      
+      if (signal === 'BUY') {
+        lastSignal.classList.add('signal-buy');
+      } else if (signal === 'SELL') {
+        lastSignal.classList.add('signal-sell');
+      } else {
+        lastSignal.classList.add('signal-hold');
+      }
+      
+      signalReason.textContent = reason;
+    }
+    
+    // Update live status
+    function updateLiveStatus() {
+      liveStatus.textContent = systemState.liveTrading ? 'ENABLED' : 'DISABLED';
+      liveStatus.style.color = systemState.liveTrading ? '#4caf50' : '#f44336';
+      
+      toggleLiveBtn.textContent = systemState.liveTrading ? 'Disable Live Trading' : 'Enable Live Trading';
+      toggleLiveBtn.className = systemState.liveTrading ? 'danger' : 'success';
+    }
+    
+    // Update kill switch
+    function updateKillSwitch() {
+      toggleKillBtn.textContent = systemState.killSwitch ? 'Reset Kill Switch' : 'Emergency Stop';
+      toggleKillBtn.className = systemState.killSwitch ? 'warning' : 'danger';
+    }
+    
+    // Add order to the list
+    function addOrder(order) {
+      systemState.orders.unshift(order);
+      
+      // Limit to 10 orders
+      if (systemState.orders.length > 10) {
+        systemState.orders.pop();
+      }
+      
+      updateOrdersDisplay();
+    }
+    
+    // Update orders display
+    function updateOrdersDisplay() {
+      if (systemState.orders.length === 0) {
+        recentOrders.innerHTML = 'No orders yet';
+        return;
+      }
+      
+      let html = '';
+      
+      systemState.orders.forEach((order, index) => {
+        const side = order.side || 'UNKNOWN';
+        const qty = order.qty || '0';
+        const time = new Date().toLocaleTimeString();
+        
+        html += `
+          <div class="data-row">
+            <span>#${index + 1} ${time}</span>
+            <span class="signal-${side.toLowerCase()}">${side} ${qty}</span>
+          </div>
+        `;
+      });
+      
+      recentOrders.innerHTML = html;
+    }
+    
+    // Toggle live trading
+    toggleLiveBtn.addEventListener('click', () => {
+      if (!ws || !systemState.connected) return;
+      
+      // Send message to toggle live trading
+      const baseUrl = document.getElementById('server').value
+        .replace('ws://', 'http://')
+        .replace('wss://', 'https://')
+        .replace('/ws', '');
+      
+      fetch(`${baseUrl}/api/live`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ live: !systemState.liveTrading })
+      })
+      .catch(error => {
+        console.error('Error toggling live trading:', error);
+      });
+    });
+    
+    // Toggle kill switch
+    toggleKillBtn.addEventListener('click', () => {
+      if (!ws || !systemState.connected) return;
+      
+      // Send message to toggle kill switch
+      const baseUrl = document.getElementById('server').value
+        .replace('ws://', 'http://')
+        .replace('wss://', 'https://')
+        .replace('/ws', '');
+      
+      fetch(`${baseUrl}/api/kill`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ kill: !systemState.killSwitch })
+      })
+      .catch(error => {
+        console.error('Error toggling kill switch:', error);
+      });
+    });
+    
+    // Update heartbeat every second
+    setInterval(updateHeartbeat, 1000);
+  </script>
+</body>
+</html>

@@ -1,5 +1,49 @@
-// Comment out TensorFlow import for now to avoid build errors
-// import * as tf from '@tensorflow/tfjs';
+// TensorFlow.js lazy loading
+let tf = null;
+let modelCache = {};
+
+async function loadTensorflow() {
+  if (!tf) {
+    try {
+      tf = await import('@tensorflow/tfjs');
+      console.log('TensorFlow.js loaded:', tf.version);
+    } catch (err) {
+      console.error('Failed to load TensorFlow.js:', err);
+      throw new Error('TensorFlow.js loading failed');
+    }
+  }
+  return tf;
+}
+
+// Load a pre-trained model from a URL or local path
+async function loadModel(modelPath) {
+  if (modelCache[modelPath]) {
+    return modelCache[modelPath];
+  }
+  
+  try {
+    const tf = await loadTensorflow();
+    
+    // Check if it's a local path or URL
+    let model;
+    if (modelPath.startsWith('http') || modelPath.startsWith('/')) {
+      model = await tf.loadLayersModel(modelPath);
+    } else if (typeof window !== 'undefined' && window.electron) {
+      // Electron-specific loading from local file
+      const localPath = `file://${window.electron.getAppPath()}/models/${modelPath}`;
+      model = await tf.loadLayersModel(localPath);
+    } else {
+      // Default to public folder in web environment
+      model = await tf.loadLayersModel(`/models/${modelPath}`);
+    }
+    
+    modelCache[modelPath] = model;
+    return model;
+  } catch (err) {
+    console.error('Failed to load ML model:', err);
+    throw new Error(`Model loading failed: ${err.message}`);
+  }
+}
 
 // Timeframe constants
 const TIMEFRAMES = {
@@ -420,9 +464,66 @@ function calculateQuickMomentum(data) {
 }
 
 // Main function to run the ML-enhanced strategy
-export async function runMlStrategy(marketData, historicalData) {
+export async function runMlStrategy(marketData, historicalData, apiKey = null) {
   try {
-    // For now, return a simple strategy until TensorFlow is properly configured
+    // Try to load TensorFlow and model, fallback to simple strategy if it fails
+    let useMlModel = false;
+    let model = null;
+    
+    try {
+      await loadTensorflow();
+      // Attempt to load default price prediction model
+      model = await loadModel('price_prediction_model/model.json');
+      useMlModel = true;
+    } catch (err) {
+      console.warn('ML model not available, using basic strategy:', err.message);
+    }
+    
+    // Process data regardless of model availability
+    const { sequences, nextChanges, lastClose, lastSequence } = preprocessData(historicalData);
+    
+    // If model loaded successfully, use it for prediction
+    if (useMlModel && model) {
+      try {
+        const predictedChange = await predictPriceChange(model, lastSequence);
+        
+        // Calculate predicted price
+        const predictedPrice = lastClose * (1 + predictedChange / 100);
+        
+        // Generate signal based on prediction
+        let signal = 'HOLD';
+        let reason = '';
+        
+        if (predictedChange > 1.5) { // Significant upward movement expected
+          signal = 'BUY';
+          reason = `ML predicts ${predictedChange.toFixed(2)}% rise to $${predictedPrice.toFixed(2)}`;
+        } else if (predictedChange < -1.5) { // Significant downward movement expected
+          signal = 'SELL';
+          reason = `ML predicts ${predictedChange.toFixed(2)}% drop to $${predictedPrice.toFixed(2)}`;
+        } else {
+          reason = `ML predicts small ${predictedChange > 0 ? 'rise' : 'drop'} of ${Math.abs(predictedChange).toFixed(2)}% to $${predictedPrice.toFixed(2)}`;
+        }
+        
+        // Calculate confidence score based on model performance
+        const confidence = Math.min(1, Math.max(0, Math.abs(predictedChange) / 5));
+        
+        return { 
+          signal, 
+          reason,
+          confidence,
+          tradeType: 'swing', // Mark this as a swing trade
+          prediction: {
+            value: predictedChange,
+            price: predictedPrice
+          }
+        };
+      } catch (modelError) {
+        console.error('Error running ML prediction:', modelError);
+        // Fall back to simple strategy
+      }
+    }
+    
+    // Fallback to simple strategy if model fails or isn't available
     const currentPrice = parseFloat(marketData.price);
     const priceChange = parseFloat(marketData.priceChangePercent || 0);
     
@@ -443,43 +544,10 @@ export async function runMlStrategy(marketData, historicalData) {
     } else {
       return {
         signal: 'HOLD',
-        reason: 'Market conditions neutral: ' + priceChange.toFixed(2) + '%'
+        reason: 'Market conditions neutral: ' + priceChange.toFixed(2) + '%',
+        confidence: 0.5
       };
     }
-  } catch (error) {
-    console.error('ML strategy error:', error);
-    return { signal: 'HOLD', reason: 'Error in ML strategy: ' + error.message };
-  }
-}
-    const predictedChange = await predictPriceChange(model, lastSequence);
-    
-    // Calculate predicted price
-    const predictedPrice = lastClose * (1 + predictedChange / 100);
-    
-    // Generate signal based on prediction
-    let signal = 'HOLD';
-    let reason = '';
-    
-    if (predictedChange > 1.5) { // Significant upward movement expected
-      signal = 'BUY';
-      reason = `ML predicts ${predictedChange.toFixed(2)}% rise to $${predictedPrice.toFixed(2)}`;
-    } else if (predictedChange < -1.5) { // Significant downward movement expected
-      signal = 'SELL';
-      reason = `ML predicts ${predictedChange.toFixed(2)}% drop to $${predictedPrice.toFixed(2)}`;
-    } else {
-      reason = `ML predicts small ${predictedChange > 0 ? 'rise' : 'drop'} of ${Math.abs(predictedChange).toFixed(2)}% to $${predictedPrice.toFixed(2)}`;
-    }
-    
-    // Calculate confidence score based on model performance
-    // In a real system, this would use validation metrics
-    const confidence = Math.min(1, Math.max(0, Math.abs(predictedChange) / 5));
-    
-    return { 
-      signal, 
-      reason,
-      confidence,
-      tradeType: 'swing' // Mark this as a swing trade
-    };
   } catch (error) {
     console.error('ML strategy error:', error);
     return { signal: 'HOLD', reason: 'Error in ML strategy: ' + error.message };
