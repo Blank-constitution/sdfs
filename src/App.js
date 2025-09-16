@@ -232,25 +232,3 @@ function App() {
 }
 
 export default App;
-        return (
-          <Dashboard
-            binanceApiKey={binanceApiKey}
-            binanceApiSecret={binanceApiSecret}
-            strategy={strategy}
-            symbol={symbol}
-            geminiAiApiKey={geminiAiApiKey}
-          />
-        );
-    }
-  };
-
-  return (
-    <div className={`App ${theme}`}>
-      <Layout activeView={activeView} setActiveView={setActiveView}>
-        {renderActiveView()}
-      </Layout>
-    </div>
-  );
-}
-
-export default App;
