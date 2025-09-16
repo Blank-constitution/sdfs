@@ -254,3 +254,136 @@
     opacity: 1;
   }
 }
+
+/* Arbitrage Dashboard Styles */
+.arbitrage-dashboard {
+  padding: 20px;
+}
+
+.strategy-tabs {
+  display: flex;
+  margin-bottom: 20px;
+}
+
+.strategy-tabs button {
+  padding: 10px 20px;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+
+.strategy-tabs button.active {
+  background-color: #007bff;
+  color: white;
+  border-color: #0056b3;
+}
+
+.settings-panel {
+  display: flex;
+  justify-content: space-between;
+  background-color: #f9f9f9;
+  padding: 15px;
+  border-radius: 5px;
+  margin-bottom: 20px;
+}
+
+.settings-panel label {
+  margin-right: 15px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.settings-panel input[type="number"] {
+  width: 70px;
+  margin-left: 5px;
+  padding: 5px;
+}
+
+.auto-trade-toggle {
+  display: flex;
+  align-items: center;
+  color: #d9534f;
+  font-weight: bold;
+}
+
+.auto-trade-toggle input:checked + span {
+  color: #5cb85c;
+}
+
+.performance-stats {
+  display: flex;
+  margin-bottom: 20px;
+  gap: 20px;
+}
+
+.profit-chart {
+  flex: 1;
+  height: 200px;
+}
+
+.profit {
+  color: #5cb85c;
+  font-weight: bold;
+}
+
+.opportunities-table {
+  margin-top: 20px;
+}
+
+.opportunities-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.opportunities-table th, 
+.opportunities-table td {
+  padding: 10px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+}
+
+.opportunities-table th {
+  background-color: #f2f2f2;
+}
+
+.execute-btn {
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 5px 10px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.execute-btn:hover {
+  background-color: #218838;
+}
+
+/* Dark theme adjustments */
+.dark .arbitrage-dashboard {
+  color: #eee;
+}
+
+.dark .strategy-tabs button {
+  background-color: #333;
+  color: #ddd;
+  border-color: #555;
+}
+
+.dark .strategy-tabs button.active {
+  background-color: #0069d9;
+  color: white;
+}
+
+.dark .settings-panel {
+  background-color: #2a2a2a;
+}
+
+.dark .opportunities-table th {
+  background-color: #333;
+}
+
+.dark .opportunities-table td,
+.dark .opportunities-table th {
+  border-color: #444;
+}

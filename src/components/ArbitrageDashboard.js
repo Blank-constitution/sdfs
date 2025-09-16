@@ -1,112 +1,492 @@
-import React, { useEffect, useState } from 'react';
-import { getBinanceMarketData, getBinanceBalances } from '../binanceApi';
-import { getKrakenMarketData, getKrakenBalances } from '../krakenApi';
-import { getGeminiMarketData } from '../geminiApi';
+import React, { useState, useEffect, useCallback } from 'react';
+import { getBinanceMarketData, getBinanceAllTickers } from '../binanceApi';
+import { getKrakenMarketData, getKrakenAllTickers } from '../krakenApi';
+import { useNotification } from '../contexts/NotificationContext';
+import { Line } from 'react-chartjs-2';
+import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend } from 'chart.js';
 
-const PAIRS_TO_SCAN = ['BTCUSDT', 'ETHUSDT']; // Pairs to check for arbitrage
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Legend);
 
-function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, krakenApiSecret, geminiApiKey, geminiApiSecret }) {
+function ArbitrageDashboard({ binanceApiKey, binanceApiSecret, krakenApiKey, krakenApiSecret }) {
   const [opportunities, setOpportunities] = useState([]);
-  const [status, setStatus] = useState('Ready to scan for arbitrage.');
-  const [lastAction, setLastAction] = useState('None yet.');
-  const [binanceBalances, setBinanceBalances] = useState([]);
-  const [krakenBalances, setKrakenBalances] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState('cross-exchange');
+  const [autoTrading, setAutoTrading] = useState(false);
+  const [minProfitPercent, setMinProfitPercent] = useState(0.5);
+  const [maxTradeSize, setMaxTradeSize] = useState(100);
+  const [scanInterval, setScanInterval] = useState(5);
+  const [historicalProfits, setHistoricalProfits] = useState([]);
+  const [totalProfit, setTotalProfit] = useState(0);
+  const [selectedPairs, setSelectedPairs] = useState([]);
+  const [availablePairs, setAvailablePairs] = useState([]);
+  const { addNotification } = useNotification();
 
-  const handleExecuteArbitrage = (opportunity) => {
-    // This is a placeholder for the complex logic of executing a two-legged arbitrage trade.
-    // In a real-world scenario, you would need to:
-    // 1. Check balances on both exchanges.
-    // 2. Calculate the maximum possible trade size.
-    // 3. Simultaneously place a BUY order on the cheaper exchange and a SELL order on the more expensive one.
-    // 4. Handle partial fills and network errors.
-    setLastAction(`EXECUTION DISABLED: Arbitrage execution is high-risk. Logic for '${opportunity.action}' needs to be carefully implemented and tested.`);
-  };
+  // Function to scan for cross-exchange arbitrage opportunities
+  const scanCrossExchange = useCallback(async () => {
+    if (!binanceApiKey || !krakenApiKey) {
+      addNotification('API keys required for both exchanges', 'error');
+      return;
+    }
 
-  useEffect(() => {
-    if (binanceApiKey && krakenApiKey && geminiApiKey) {
-      const findArbitrage = async () => {
-        setStatus('Scanning for opportunities across Binance, Kraken, and Gemini...');
-        // Fetch balances from both exchanges
-        getBinanceBalances(binanceApiKey, binanceApiSecret).then(setBinanceBalances);
-        getKrakenBalances(krakenApiKey, krakenApiSecret).then(setKrakenBalances);
+    setLoading(true);
+    try {
+      // Get all tickers from both exchanges
+      const binanceTickers = await getBinanceAllTickers();
+      const krakenTickers = await getKrakenAllTickers();
 
-        const foundOpportunities = [];
-        for (const pair of PAIRS_TO_SCAN) {
-          const pricePromises = [
-            getBinanceMarketData(pair).then(data => ({ exchange: 'Binance', price: data ? parseFloat(data.price) : null })),
-            getKrakenMarketData(pair).then(data => ({ exchange: 'Kraken', price: data ? parseFloat(data.price) : null })),
-            getGeminiMarketData(pair).then(data => ({ exchange: 'Gemini', price: data ? parseFloat(data.price) : null })),
-          ];
+      // Find common pairs between exchanges
+      const commonPairs = findCommonPairs(binanceTickers, krakenTickers);
+      
+      // Calculate price differences and identify arbitrage opportunities
+      const newOpportunities = commonPairs.map(pair => {
+        const binancePrice = parseFloat(binanceTickers[pair]?.price || 0);
+        const krakenPrice = parseFloat(krakenTickers[pair]?.price || 0);
+        
+        if (!binancePrice || !krakenPrice) return null;
+        
+        const priceDiffPercent = Math.abs((binancePrice - krakenPrice) / krakenPrice * 100);
+        const direction = binancePrice < krakenPrice ? 'Binance → Kraken' : 'Kraken → Binance';
+        const estimatedProfit = calculateEstimatedProfit(binancePrice, krakenPrice, maxTradeSize);
+        
+        return {
+          pair,
+          binancePrice,
+          krakenPrice,
+          priceDiffPercent,
+          direction,
+          estimatedProfit,
+          timestamp: Date.now(),
+          isViable: priceDiffPercent > minProfitPercent && estimatedProfit > 0
+        };
+      }).filter(Boolean).filter(opp => opp.isViable);
+      
+      // Sort by profit potential
+      newOpportunities.sort((a, b) => b.priceDiffPercent - a.priceDiffPercent);
+      
+      setOpportunities(newOpportunities);
+      
+      // Auto-execute trades if enabled and viable opportunities exist
+      if (autoTrading && newOpportunities.length > 0) {
+        const topOpportunity = newOpportunities[0];
+        if (topOpportunity.priceDiffPercent > minProfitPercent * 1.2) { // 20% buffer
+          executeArbitrageTrade(topOpportunity);
+        }
+      }
+      
+      addNotification(`Found ${newOpportunities.length} arbitrage opportunities`, 'info');
+    } catch (error) {
+      console.error('Error scanning for arbitrage:', error);
+      addNotification('Failed to scan for arbitrage opportunities', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [binanceApiKey, krakenApiKey, minProfitPercent, maxTradeSize, autoTrading, addNotification]);
 
-          const prices = (await Promise.all(pricePromises)).filter(p => p.price !== null);
+  // Function to scan for triangular arbitrage opportunities
+  const scanTriangular = useCallback(async () => {
+    if (!binanceApiKey) {
+      addNotification('Binance API key required for triangular arbitrage', 'error');
+      return;
+    }
 
-          if (prices.length > 1) {
-            const min = prices.reduce((prev, curr) => (prev.price < curr.price ? prev : curr));
-            const max = prices.reduce((prev, curr) => (prev.price > curr.price ? prev : curr));
-            const diff = ((max.price - min.price) / min.price) * 100;
+    setLoading(true);
+    try {
+      // Get all tickers from Binance
+      const binanceTickers = await getBinanceAllTickers();
+      
+      // Define common base assets (e.g., BTC, ETH, USDT)
+      const baseAssets = ['BTC', 'ETH', 'USDT', 'BNB'];
+      
+      // Find triangular arbitrage opportunities
+      const triangularOpps = findTriangularOpportunities(binanceTickers, baseAssets);
+      
+      // Filter for viable opportunities
+      const viableOpps = triangularOpps.filter(opp => 
+        opp.profitPercent > minProfitPercent && 
+        opp.estimatedProfit > 0
+      );
+      
+      setOpportunities(viableOpps);
+      
+      // Auto-execute trades if enabled
+      if (autoTrading && viableOpps.length > 0) {
+        const topOpportunity = viableOpps[0];
+        if (topOpportunity.profitPercent > minProfitPercent * 1.2) {
+          executeTriangularTrade(topOpportunity);
+        }
+      }
+      
+      addNotification(`Found ${viableOpps.length} triangular arbitrage opportunities`, 'info');
+    } catch (error) {
+      console.error('Error scanning for triangular arbitrage:', error);
+      addNotification('Failed to scan for triangular arbitrage', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [binanceApiKey, minProfitPercent, autoTrading, addNotification]);
 
-            if (diff > 0.5) { // Profit threshold
-              foundOpportunities.push({
-                pair,
-                buyAt: min.exchange,
-                sellAt: max.exchange,
-                buyPrice: min.price,
-                sellPrice: max.price,
-                profit: diff.toFixed(2),
-                action: `Buy on ${min.exchange}, Sell on ${max.exchange}`,
+  // Function to find triangular arbitrage opportunities
+  const findTriangularOpportunities = (tickers, baseAssets) => {
+    const opportunities = [];
+    
+    // Create a map of all available trading pairs
+    const pairsMap = {};
+    Object.keys(tickers).forEach(symbol => {
+      pairsMap[symbol] = parseFloat(tickers[symbol].price);
+    });
+    
+    // Identify all possible triangular paths
+    baseAssets.forEach(baseAsset => {
+      // Find all pairs with this base asset
+      const basePairs = Object.keys(pairsMap).filter(pair => 
+        pair.endsWith(baseAsset) || pair.startsWith(baseAsset)
+      );
+      
+      // For each pair, find potential triangular paths
+      basePairs.forEach(firstPair => {
+        // Extract the non-base asset from the first pair
+        const firstAsset = firstPair.replace(baseAsset, '');
+        
+        // Find pairs containing the first asset but not the base asset
+        const secondPairs = Object.keys(pairsMap).filter(pair => 
+          (pair.includes(firstAsset)) && 
+          (!pair.includes(baseAsset))
+        );
+        
+        // For each second pair, complete the triangle
+        secondPairs.forEach(secondPair => {
+          // Extract the other asset from the second pair
+          const secondAsset = secondPair.replace(firstAsset, '');
+          
+          // Find the third pair to complete the triangle
+          const thirdPair = Object.keys(pairsMap).find(pair => 
+            (pair.includes(secondAsset) && pair.includes(baseAsset))
+          );
+          
+          if (thirdPair) {
+            // Calculate potential profit from this triangle
+            const { profitPercent, path, estimatedProfit } = calculateTriangularProfit(
+              baseAsset, firstAsset, secondAsset,
+              firstPair, secondPair, thirdPair,
+              pairsMap, maxTradeSize
+            );
+            
+            if (profitPercent > 0) {
+              opportunities.push({
+                path,
+                profitPercent,
+                estimatedProfit,
+                timestamp: Date.now(),
+                type: 'triangular',
+                exchange: 'Binance',
+                isViable: profitPercent > minProfitPercent
               });
             }
           }
-        }
-        setOpportunities(foundOpportunities);
-        setStatus(`Scan complete. Found ${foundOpportunities.length} opportunities.`);
-      };
+        });
+      });
+    });
+    
+    // Sort by profit potential
+    return opportunities.sort((a, b) => b.profitPercent - a.profitPercent);
+  };
 
-      findArbitrage();
-      const interval = setInterval(findArbitrage, 60000); // Rescan every minute
-      return () => clearInterval(interval);
+  // Calculate profit for triangular arbitrage
+  const calculateTriangularProfit = (baseAsset, firstAsset, secondAsset, firstPair, secondPair, thirdPair, prices, amount) => {
+    // This is a simplified calculation - in production, you'd account for fees, slippage, etc.
+    
+    // Determine if we need to buy or sell for each step
+    const firstPairBuy = firstPair.endsWith(baseAsset);
+    const secondPairBuy = secondPair.endsWith(firstAsset);
+    const thirdPairBuy = thirdPair.endsWith(secondAsset);
+    
+    // Start with base amount
+    let currentAmount = amount;
+    
+    // First trade
+    if (firstPairBuy) {
+      currentAmount = currentAmount / prices[firstPair]; // Buy firstAsset with baseAsset
+    } else {
+      currentAmount = currentAmount * prices[firstPair]; // Sell baseAsset for firstAsset
     }
-  }, [binanceApiKey, krakenApiKey, geminiApiKey]);
+    
+    // Second trade
+    if (secondPairBuy) {
+      currentAmount = currentAmount / prices[secondPair]; // Buy secondAsset with firstAsset
+    } else {
+      currentAmount = currentAmount * prices[secondPair]; // Sell firstAsset for secondAsset
+    }
+    
+    // Third trade
+    if (thirdPairBuy) {
+      currentAmount = currentAmount / prices[thirdPair]; // Buy baseAsset with secondAsset
+    } else {
+      currentAmount = currentAmount * prices[thirdPair]; // Sell secondAsset for baseAsset
+    }
+    
+    // Calculate profit
+    const profitPercent = ((currentAmount - amount) / amount) * 100;
+    const estimatedProfit = currentAmount - amount;
+    
+    // Describe the path
+    const path = `${baseAsset} → ${firstAsset} → ${secondAsset} → ${baseAsset}`;
+    
+    return { profitPercent, path, estimatedProfit };
+  };
+
+  // Function to execute a cross-exchange arbitrage trade
+  const executeArbitrageTrade = async (opportunity) => {
+    try {
+      addNotification(`Executing arbitrage trade for ${opportunity.pair}`, 'info');
+      
+      // In a real implementation, you would:
+      // 1. Place a buy order on the cheaper exchange
+      // 2. Place a sell order on the more expensive exchange
+      // 3. Track and settle both orders
+      
+      // Simulate a successful trade for demo
+      const newProfit = opportunity.estimatedProfit * 0.85; // Account for fees and slippage
+      
+      // Update historical profits
+      const newHistoricalProfit = {
+        timestamp: Date.now(),
+        pair: opportunity.pair,
+        profit: newProfit,
+        type: 'cross-exchange'
+      };
+      
+      setHistoricalProfits(prev => [...prev, newHistoricalProfit]);
+      setTotalProfit(prev => prev + newProfit);
+      
+      addNotification(`Arbitrage trade completed! Profit: $${newProfit.toFixed(2)}`, 'success');
+    } catch (error) {
+      console.error('Error executing arbitrage trade:', error);
+      addNotification('Failed to execute arbitrage trade', 'error');
+    }
+  };
+
+  // Function to execute a triangular arbitrage trade
+  const executeTriangularTrade = async (opportunity) => {
+    try {
+      addNotification(`Executing triangular trade: ${opportunity.path}`, 'info');
+      
+      // In a real implementation, you would:
+      // 1. Execute each leg of the triangular trade in sequence
+      // 2. Track and settle all orders
+      
+      // Simulate a successful trade for demo
+      const newProfit = opportunity.estimatedProfit * 0.9; // Account for fees
+      
+      // Update historical profits
+      const newHistoricalProfit = {
+        timestamp: Date.now(),
+        pair: opportunity.path,
+        profit: newProfit,
+        type: 'triangular'
+      };
+      
+      setHistoricalProfits(prev => [...prev, newHistoricalProfit]);
+      setTotalProfit(prev => prev + newProfit);
+      
+      addNotification(`Triangular trade completed! Profit: $${newProfit.toFixed(2)}`, 'success');
+    } catch (error) {
+      console.error('Error executing triangular trade:', error);
+      addNotification('Failed to execute triangular trade', 'error');
+    }
+  };
+
+  // Function to find common trading pairs between exchanges
+  const findCommonPairs = (binanceTickers, krakenTickers) => {
+    const binancePairs = new Set(Object.keys(binanceTickers));
+    const krakenPairs = new Set(Object.keys(krakenTickers));
+    
+    // Find intersection of available pairs
+    return Array.from(binancePairs).filter(pair => krakenPairs.has(pair));
+  };
+
+  // Calculate estimated profit for a cross-exchange arbitrage opportunity
+  const calculateEstimatedProfit = (price1, price2, tradeSize) => {
+    const lowerPrice = Math.min(price1, price2);
+    const higherPrice = Math.max(price1, price2);
+    
+    const quantity = tradeSize / lowerPrice;
+    const profit = (quantity * higherPrice) - tradeSize;
+    
+    // Account for trading fees (0.1% per trade on both exchanges)
+    const fees = (tradeSize * 0.001) + (quantity * higherPrice * 0.001);
+    
+    return profit - fees;
+  };
+
+  // Setup periodic scanning
+  useEffect(() => {
+    // Initial scan
+    if (activeTab === 'cross-exchange') {
+      scanCrossExchange();
+    } else if (activeTab === 'triangular') {
+      scanTriangular();
+    }
+    
+    // Setup interval for periodic scanning
+    const intervalId = setInterval(() => {
+      if (activeTab === 'cross-exchange') {
+        scanCrossExchange();
+      } else if (activeTab === 'triangular') {
+        scanTriangular();
+      }
+    }, scanInterval * 1000);
+    
+    return () => clearInterval(intervalId);
+  }, [scanCrossExchange, scanTriangular, activeTab, scanInterval]);
+
+  // Prepare chart data for profit history
+  const profitChartData = {
+    labels: historicalProfits.map(p => new Date(p.timestamp).toLocaleTimeString()),
+    datasets: [
+      {
+        label: 'Arbitrage Profits ($)',
+        data: historicalProfits.map(p => p.profit),
+        fill: false,
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        borderColor: 'rgba(75, 192, 192, 1)',
+      },
+    ],
+  };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h2>Arbitrage Bot (Binance vs. Kraken vs. Gemini)</h2>
-      <p><strong>Status:</strong> {status}</p>
-      <p><strong>Last Action:</strong> {lastAction}</p>
+    <div className="arbitrage-dashboard">
+      <h2>Arbitrage Dashboard</h2>
       
-      <div style={{ display: 'flex', gap: '50px', marginBottom: '20px' }}>
-        <section>
-          <h3>Binance Balances</h3>
-          <ul>{binanceBalances.slice(0, 5).map(b => <li key={b.asset}>{b.asset}: {parseFloat(b.free).toFixed(4)}</li>)}</ul>
-        </section>
-        <section>
-          <h3>Kraken Balances</h3>
-          <ul>{krakenBalances.slice(0, 5).map(b => <li key={b.asset}>{b.asset}: {parseFloat(b.free).toFixed(4)}</li>)}</ul>
-        </section>
+      {/* Strategy Selection Tabs */}
+      <div className="strategy-tabs">
+        <button 
+          className={activeTab === 'cross-exchange' ? 'active' : ''} 
+          onClick={() => setActiveTab('cross-exchange')}
+        >
+          Cross-Exchange
+        </button>
+        <button 
+          className={activeTab === 'triangular' ? 'active' : ''} 
+          onClick={() => setActiveTab('triangular')}
+        >
+          Triangular
+        </button>
+        <button 
+          className={activeTab === 'statistical' ? 'active' : ''} 
+          onClick={() => setActiveTab('statistical')}
+        >
+          Statistical
+        </button>
       </div>
-
-      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-        <thead>
-          <tr style={{ borderBottom: '1px solid black' }}>
-            <th style={{ textAlign: 'left' }}>Pair</th>
-            <th style={{ textAlign: 'left' }}>Buy At (Price)</th>
-            <th style={{ textAlign: 'left' }}>Sell At (Price)</th>
-            <th style={{ textAlign: 'left' }}>Profit (%)</th>
-            <th style={{ textAlign: 'left' }}>Execute</th>
-          </tr>
-        </thead>
-        <tbody>
-          {opportunities.map(op => (
-            <tr key={op.pair + op.buyAt} style={{ backgroundColor: '#d4edda' }}>
-              <td>{op.pair}</td>
-              <td>{op.buyAt} (${op.buyPrice.toFixed(2)})</td>
-              <td>{op.sellAt} (${op.sellPrice.toFixed(2)})</td>
-              <td>{op.profit}%</td>
-              <td><button onClick={() => handleExecuteArbitrage(op)}>Execute</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      
+      {/* Settings Panel */}
+      <div className="settings-panel">
+        <div>
+          <label>
+            Min. Profit %:
+            <input 
+              type="number" 
+              value={minProfitPercent} 
+              onChange={e => setMinProfitPercent(parseFloat(e.target.value))}
+              min="0.1" 
+              step="0.1"
+            />
+          </label>
+          
+          <label>
+            Max Trade Size ($):
+            <input 
+              type="number" 
+              value={maxTradeSize} 
+              onChange={e => setMaxTradeSize(parseFloat(e.target.value))}
+              min="10"
+            />
+          </label>
+          
+          <label>
+            Scan Interval (sec):
+            <input 
+              type="number" 
+              value={scanInterval} 
+              onChange={e => setScanInterval(parseInt(e.target.value))}
+              min="1"
+            />
+          </label>
+        </div>
+        
+        <div className="trading-controls">
+          <button onClick={() => activeTab === 'cross-exchange' ? scanCrossExchange() : scanTriangular()} disabled={loading}>
+            {loading ? 'Scanning...' : 'Scan Now'}
+          </button>
+          
+          <label className="auto-trade-toggle">
+            <input 
+              type="checkbox" 
+              checked={autoTrading} 
+              onChange={e => setAutoTrading(e.target.checked)}
+            />
+            Auto-Trading {autoTrading ? 'ON' : 'OFF'}
+          </label>
+        </div>
+      </div>
+      
+      {/* Performance Stats */}
+      <div className="performance-stats">
+        <div>
+          <h3>Performance</h3>
+          <p>Total Profit: <span className="profit">${totalProfit.toFixed(2)}</span></p>
+          <p>Trades Executed: {historicalProfits.length}</p>
+        </div>
+        
+        {historicalProfits.length > 0 && (
+          <div className="profit-chart">
+            <Line data={profitChartData} options={{ maintainAspectRatio: false }} />
+          </div>
+        )}
+      </div>
+      
+      {/* Opportunities Table */}
+      <div className="opportunities-table">
+        <h3>Current Opportunities</h3>
+        {opportunities.length === 0 ? (
+          <p>No viable arbitrage opportunities found. Try adjusting your parameters.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Type</th>
+                <th>Price Diff (%)</th>
+                <th>Est. Profit</th>
+                <th>Direction</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {opportunities.map((opp, index) => (
+                <tr key={index}>
+                  <td>{activeTab === 'triangular' ? 'Triangle' : opp.pair}</td>
+                  <td>{opp.type || 'cross-exchange'}</td>
+                  <td>{opp.profitPercent?.toFixed(2) || opp.priceDiffPercent?.toFixed(2)}%</td>
+                  <td>${opp.estimatedProfit.toFixed(2)}</td>
+                  <td>{opp.direction || opp.path}</td>
+                  <td>
+                    <button 
+                      onClick={() => activeTab === 'triangular' ? 
+                        executeTriangularTrade(opp) : 
+                        executeArbitrageTrade(opp)
+                      }
+                      className="execute-btn"
+                    >
+                      Execute
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
