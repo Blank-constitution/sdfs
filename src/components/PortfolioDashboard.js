@@ -2,21 +2,21 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { getBinanceBalances, getBinanceMarketData } from '../binanceApi';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
+import { useNotification } from '../contexts/NotificationContext';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 function PortfolioDashboard({ binanceApiKey, binanceApiSecret }) {
   const [portfolio, setPortfolio] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const { addNotification } = useNotification();
 
   const fetchPortfolioData = useCallback(async () => {
     if (!binanceApiKey || !binanceApiSecret) {
-      setError('Binance API keys are not set.');
+      addNotification('Binance API keys are not set.', 'error');
       return;
     }
     setIsLoading(true);
-    setError('');
 
     try {
       const balances = await getBinanceBalances(binanceApiKey, binanceApiSecret);
@@ -69,12 +69,13 @@ function PortfolioDashboard({ binanceApiKey, binanceApiSecret }) {
         assets: assetValues,
         chartData,
       });
+      addNotification('Portfolio updated successfully!', 'success');
 
     } catch (err) {
-      setError(err.msg || 'Failed to fetch portfolio data.');
+      addNotification(err.msg || 'Failed to fetch portfolio data.', 'error');
     }
     setIsLoading(false);
-  }, [binanceApiKey, binanceApiSecret]);
+  }, [binanceApiKey, binanceApiSecret, addNotification]);
 
   useEffect(() => {
     fetchPortfolioData();
@@ -86,7 +87,6 @@ function PortfolioDashboard({ binanceApiKey, binanceApiSecret }) {
       <button onClick={fetchPortfolioData} disabled={isLoading}>
         {isLoading ? 'Refreshing...' : 'Refresh Portfolio'}
       </button>
-      {error && <p style={{ color: 'red' }}>{error}</p>}
 
       {isLoading && !portfolio && <p>Loading portfolio...</p>}
 
