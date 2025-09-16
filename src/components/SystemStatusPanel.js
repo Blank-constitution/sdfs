@@ -6,10 +6,10 @@ export default function SystemStatusPanel() {
   const hbAge = status.lastHeartbeat ? ((Date.now() - status.lastHeartbeat) / 1000).toFixed(1) : '—';
   
   return (
-    <div style={{ padding: 12, border: '1px solid #ccc', marginBottom: 15, borderRadius: 6 }}>
-      <h4 style={{ margin: '0 0 8px' }}>System Status</h4>
+    <div className="system-status-panel">
+      <h4>System Status</h4>
       
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '15px', fontSize: 12 }}>
+      <div className="status-grid">
         <div>Heartbeat Age: {hbAge}s</div>
         <div>Live: <strong style={{ color: status.liveTrading ? 'green' : 'red' }}>{String(status.liveTrading)}</strong></div>
         <div>Kill Switch: <strong style={{ color: status.risk?.killSwitch ? 'red' : 'green' }}>{String(status.risk?.killSwitch)}</strong></div>
@@ -17,13 +17,12 @@ export default function SystemStatusPanel() {
         <div>Symbol: {status.symbol}</div>
         <div>Last Signal: {status.lastSignal?.signal || '—'}</div>
         
-        {/* Add ML/AI status indicators */}
+        {/* ML/AI status indicators */}
         <div>AI Analysis: <strong style={{ color: status.useAIAnalysis ? 'green' : 'gray' }}>{status.useAIAnalysis ? 'Active' : 'Disabled'}</strong></div>
         <div>ML Optimization: <strong style={{ color: status.useStrategyOptimization ? 'green' : 'gray' }}>{status.useStrategyOptimization ? 'Active' : 'Disabled'}</strong></div>
       </div>
       
-      <div style={{ marginTop: 10, display: 'flex', gap: 10 }}>
-        {/* ...existing buttons... */}
+      <div className="button-group">
         <button onClick={() => setLive(!status.liveTrading)}>
           {status.liveTrading ? 'Disable Live' : 'Enable Live'}
         </button>
@@ -31,7 +30,6 @@ export default function SystemStatusPanel() {
           {status.risk?.killSwitch ? 'Release Kill' : 'Activate Kill'}
         </button>
         
-        {/* Add ML/AI control buttons */}
         <button onClick={() => refreshConfig({ useAIAnalysis: !status.useAIAnalysis })}>
           {status.useAIAnalysis ? 'Disable AI' : 'Enable AI'}
         </button>
@@ -47,19 +45,21 @@ export default function SystemStatusPanel() {
         </button>
       </div>
       
-      {/* ...existing error display... */}
       {status.lastError && (
-        <div style={{ marginTop: 8, color: 'crimson' }}>
+        <div className="error-message">
           Last Error: {status.lastError.reason || status.lastError.error?.msg || 'Unknown'}
         </div>
       )}
       
-      {/* Add AI insight display */}
       {status.lastAiAnalysis && (
-        <div style={{ marginTop: 8, fontSize: 11, padding: 5, backgroundColor: '#f5f5f5', borderRadius: 3 }}>
+        <div className="ai-insight">
           <strong>AI Insight:</strong> {status.lastAiAnalysis.analysis?.sentiment || 'No insight available'} 
           (Confidence: {status.lastAiAnalysis.analysis?.confidence || 0}%)
         </div>
+      )}
+    </div>
+  );
+}
       )}
     </div>
   );

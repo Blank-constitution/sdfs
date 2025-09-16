@@ -209,7 +209,7 @@ function calculateSMA(prices, period) {
 }
 
 /**
- * Calculate Relative Strength Index
+ * Calculate Relative Strength Index using standard formula
  */
 function calculateRSI(prices, period = 14) {
   if (prices.length < period + 1) {
@@ -219,7 +219,7 @@ function calculateRSI(prices, period = 14) {
   let gains = 0;
   let losses = 0;
   
-  // Calculate initial average gain and loss
+  // Calculate first average gain/loss
   for (let i = 1; i <= period; i++) {
     const change = prices[i - 1] - prices[i];
     if (change >= 0) {
@@ -232,49 +232,80 @@ function calculateRSI(prices, period = 14) {
   let avgGain = gains / period;
   let avgLoss = losses / period;
   
-  // Calculate RSI
-  const rs = avgLoss > 0 ? avgGain / avgLoss : 100;
-  return 100 - (100 / (1 + rs));
+  // First RSI value
+  let rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+  let rsiValues = [100 - (100 / (1 + rs))];
+  
+  // Calculate remaining RSI values
+  for (let i = period + 1; i < prices.length; i++) {
+    const change = prices[i - 1] - prices[i];
+    const gain = change >= 0 ? change : 0;
+    const loss = change < 0 ? -change : 0;
+    
+    // Use proper smoothing formula
+    avgGain = ((avgGain * (period - 1)) + gain) / period;
+    avgLoss = ((avgLoss * (period - 1)) + loss) / period;
+    
+    rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+    rsiValues.push(100 - (100 / (1 + rs)));
+  }
+  
+  // Pad beginning with 50 (neutral)
+  return [...Array(prices.length - rsiValues.length).fill(50), ...rsiValues];
 }
 
 /**
- * Calculate MACD
+ * Calculate MACD using standard formula
  */
 function calculateMACD(prices, fastPeriod = 12, slowPeriod = 26, signalPeriod = 9) {
-  if (prices.length < slowPeriod) {
+  if (prices.length < Math.max(fastPeriod, slowPeriod, signalPeriod)) {
     return { macd: 0, signal: 0, histogram: 0 };
   }
   
-  // This is a simplified calculation
+  // Calculate EMAs
   const fastEMA = calculateEMA(prices, fastPeriod);
   const slowEMA = calculateEMA(prices, slowPeriod);
   
-  const macdLine = fastEMA - slowEMA;
-  const signalLine = macdLine * 0.2 + (prices[0] - prices[1]) * 0.8; // Simplified signal
+  // Calculate MACD line
+  const macdLine = [];
+  for (let i = 0; i < prices.length; i++) {
+    macdLine.push(fastEMA[i] - slowEMA[i]);
+  }
   
+  // Calculate signal line (EMA of MACD line)
+  const signalLine = calculateEMA(macdLine, signalPeriod);
+  
+  // Calculate histogram
+  const histogram = [];
+  for (let i = 0; i < macdLine.length; i++) {
+    histogram.push(macdLine[i] - signalLine[i]);
+  }
+  
+  // Get the latest values
+  const latestIndex = macdLine.length - 1;
   return {
-    macd: macdLine,
-    signal: signalLine,
-    histogram: macdLine - signalLine
+    macd: macdLine[latestIndex],
+    signal: signalLine[latestIndex],
+    histogram: histogram[latestIndex]
   };
 }
 
 /**
- * Calculate Exponential Moving Average
+ * Calculate Exponential Moving Average using standard formula
  */
 function calculateEMA(prices, period) {
   if (prices.length < period) {
-    return calculateSMA(prices, prices.length);
+    return Array(prices.length).fill(prices[0]);
   }
   
   const k = 2 / (period + 1);
-  let ema = prices[period - 1];
+  const emaArray = [prices[0]]; // Start with first price
   
-  for (let i = period - 2; i >= 0; i--) {
-    ema = prices[i] * k + ema * (1 - k);
+  for (let i = 1; i < prices.length; i++) {
+    emaArray.push(prices[i] * k + emaArray[i - 1] * (1 - k));
   }
   
-  return ema;
+  return emaArray;
 }
 
 /**

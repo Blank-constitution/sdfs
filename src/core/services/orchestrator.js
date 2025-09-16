@@ -41,16 +41,16 @@ export function getOrchestratorState() {
 async function loop() {
   orchestratorState.lastLoopTs = Date.now();
   try {
-    // Get market data from selected source
+    // Get market data from selected source - avoid redundant API calls
     let marketData, historicalData;
     
     switch (orchestratorState.dataSource) {
       case 'real-market':
-        // Use commercial data providers for more accurate price data
+        // Use commercial data providers only
         marketData = await fetchRealMarketData(
           orchestratorState.symbol, 
           '1m', 
-          'twelve-data'  // Default provider
+          'twelve-data'
         );
         historicalData = await fetchHistoricalData(
           orchestratorState.symbol, 
@@ -61,7 +61,7 @@ async function loop() {
         break;
         
       case 'historical':
-        // Use locally stored CSV data
+        // Use locally stored CSV data only
         marketData = await fetchRealMarketData(
           orchestratorState.symbol, 
           '1m', 

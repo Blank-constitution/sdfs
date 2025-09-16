@@ -9,9 +9,9 @@ function sign(queryString, secret) {
 }
 
 export default async function handler(req, res) {
-  // Read API keys securely from environment variables
-  const apiKey = process.env.REACT_APP_BINANCE_API_KEY;
-  const apiSecret = process.env.REACT_APP_BINANCE_API_SECRET;
+  // SECURITY: Use standard environment variable names for server-side components
+  const apiKey = process.env.BINANCE_API_KEY || process.env.REACT_APP_BINANCE_API_KEY;
+  const apiSecret = process.env.BINANCE_API_SECRET || process.env.REACT_APP_BINANCE_API_SECRET;
 
   if (!apiKey || !apiSecret) {
     return res.status(500).json({ error: 'API keys are not configured on the server.' });
