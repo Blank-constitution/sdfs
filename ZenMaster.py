@@ -139,6 +139,7 @@ class ZenMaster:
             logger.warning("Cannot exit trade, not in a position.")
             self.state = BotState.WATCHING_IN_NIRVANA
             return
+
         pnl_percentage = ((exit_price - self.entry_price) / self.entry_price) * 100
         pnl_amount = self.position_size * (exit_price - self.entry_price)
         
@@ -159,7 +160,6 @@ class ZenMaster:
         self.entry_time = 0
         self.state = BotState.WATCHING_IN_NIRVANA
         logger.info("Returning to state of watchful meditation...")
-        logger.info(f"EXITED TRADE at {exit_price:.2f}, PnL: {pnl_percentage:.2f}% (${pnl_amount:.2f}), New Capital: ${self.capital:.2f}")
         
         win_rate = (self.profitable_trades / self.trades_executed) * 100 if self.trades_executed > 0 else 0
         logger.info(f"Win rate: {win_rate:.1f}% ({self.profitable_trades}/{self.trades_executed})")

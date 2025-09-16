@@ -69,40 +69,6 @@ class TapeFilter:
 
     def detects_large_trade_sequence(self, min_sequence: int = 3, threshold: float = 10.0) -> bool:
         """
-        Detects a sequence of consecutive large trades in the same direction.
-        """
-        recent_trades = self.data_bridge.recent_trades
-        if len(recent_trades) < 10:
-            return False
-            
-        median_size = median(float(trade.get('quantity', 0)) for trade in recent_trades)
-        if median_size == 0: return False
-
-        sequence_count = 0
-        last_direction = None
-        
-        for trade in recent_trades[-10:]:
-            size = float(trade.get('quantity', 0))
-            is_buyer_aggressor = not trade.get('is_buyer_maker', False)
-            
-            if size > threshold * median_size:
-                if last_direction is None or last_direction == is_buyer_aggressor:
-                    sequence_count += 1
-                else:
-                    # Direction changed, reset sequence
-                    sequence_count = 1
-                last_direction = is_buyer_aggressor
-            else:
-                # Not a large trade, reset sequence
-                sequence_count = 0
-                
-            if sequence_count >= min_sequence:
-                return True
-                
-        return False
-        return False
-    def detects_large_trade_sequence(self, min_sequence: int = 3, threshold: float = 10.0) -> bool:
-        """
         Detects a sequence of consecutive large trades in the same direction,
         which can indicate strong institutional buying or selling.
         
@@ -114,6 +80,40 @@ class TapeFilter:
             True if a sequence of large trades is detected
         """
         recent_trades = self.data_bridge.recent_trades
+        
+        if len(recent_trades) < 10:  # Need enough trades
+            return False
+            
+        # Calculate median trade size (more robust than mean)
+        median_size = median(float(trade.get('quantity', 0)) for trade in recent_trades)
+        
+        # Look for consecutive large trades
+        sequence_count = 0
+        last_direction = None
+        
+        for trade in recent_trades[-10:]:  # Check most recent 10 trades
+            size = float(trade.get('quantity', 0))
+            is_buyer = trade.get('is_buyer_maker', False) is False
+            
+            # Is this a large trade?
+            if size > threshold * median_size:
+                # Check if same direction as previous large trade
+                if last_direction is None or last_direction == is_buyer:
+                    sequence_count += 1
+                    last_direction = is_buyer
+                else:
+                    # Direction changed, reset sequence
+                    sequence_count = 1
+                    last_direction = is_buyer
+            else:
+                # Not a large trade, reset sequence
+                sequence_count = 0
+                
+            # Have we found our sequence?
+            if sequence_count >= min_sequence:
+                return True
+                
+        return False
         
         if len(recent_trades) < 10:  # Need enough trades
             return False
