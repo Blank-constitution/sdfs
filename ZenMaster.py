@@ -98,7 +98,7 @@ class ZenMaster:
 
     def enter_trade(self, entry_price: float):
         """
-        Executes the trade entry.
+        Executes the trade entry at the specified price.
         """
         if self.state == BotState.IN_TRADE:
             logger.warning("Cannot enter trade, already in a position.")
@@ -133,7 +133,7 @@ class ZenMaster:
     
     def exit_trade(self, exit_price: float):
         """
-        Executes the trade exit and updates performance.
+        Executes the trade exit and updates performance metrics.
         """
         if self.state != BotState.IN_TRADE and self.state != BotState.EXITING_TRADE:
             logger.warning("Cannot exit trade, not in a position.")

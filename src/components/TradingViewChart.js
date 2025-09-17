@@ -1,30 +1,29 @@
-import React from 'react';
-import TradingViewWidget from 'react-tradingview-widget';
+import React, { useEffect, useRef, useState } from 'react';
+import { createChart } from 'lightweight-charts';
 import { useTheme } from '../contexts/ThemeContext';
+import { getHistoricalData } from '../api/binance';
 
 const TradingViewChart = ({ symbol }) => {
   const { theme } = useTheme();
+  const chartRef = useRef();
+  const candleSeriesRef = useRef();
+  const [loading, setLoading] = useState(true);
 
-  return (
-    <div style={{ height: 'calc(100vh - 100px)', padding: '10px' }}>
-      <TradingViewWidget
-        symbol={`BINANCE:${symbol}`}
-        theme={theme === 'dark' ? 'dark' : 'light'}
-        autosize
-        interval="60"
-        timezone="Etc/UTC"
-        style="1"
-        locale="en"
-        toolbar_bg="#f1f3f6"
-        enable_publishing={false}
-        allow_symbol_change={true}
-        container_id="tradingview_chart_container"
-      />
-    </div>
-  );
-};
+  useEffect(() => {
+    const handleResize = () => {
+      if (chartRef.current) {
+        chartRef.current.resize(chartRef.current.clientWidth, chartRef.current.clientHeight);
+      }
+    };
 
-export default TradingViewChart;
+    // Create chart
+    chartRef.current = createChart('tradingview_chart_container', {
+      width: chartRef.current.clientWidth,
+      height: chartRef.current.clientHeight,
+      layout: {
+        backgroundColor: theme === 'dark' ? '#000' : '#fff',
+        textColor: theme === 'dark' ? '#fff' : '#000',
+      },
       grid: {
         vertLines: { color: '#f0f0f0' },
         horzLines: { color: '#f0f0f0' },
@@ -78,15 +77,16 @@ export default TradingViewChart;
         chartRef.current.remove();
       }
     };
-  }, [symbol]);
+  }, [symbol, theme]);
 
   return (
     <div style={{ padding: 20 }}>
       <h2>TradingView Chart: {symbol}</h2>
       {loading && <p>Loading chart data...</p>}
-      <div ref={chartContainerRef} style={{ position: 'relative' }} />
+      <div ref={chartRef} style={{ position: 'relative', height: 'calc(100vh - 100px)', padding: '10px' }} />
     </div>
   );
 };
 
+export default TradingViewChart;
 export default TradingViewChart;
